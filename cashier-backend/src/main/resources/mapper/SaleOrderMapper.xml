@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cashier.module.order.mapper.SaleOrderMapper">
+
+    <!--
+        分页查询订单列表
+        关联 sys_user（收银员）和 member（会员）
+    -->
+    <select id="selectPageVO" resultType="com.cashier.module.order.vo.OrderVO">
+        SELECT
+            o.id,
+            o.order_no AS orderNo,
+            o.member_id AS memberId,
+            m.name AS memberName,
+            o.user_id AS userId,
+            u.real_name AS userName,
+            o.total_amount AS totalAmount,
+            o.discount_amount AS discountAmount,
+            o.real_amount AS realAmount,
+            o.pay_type AS payType,
+            o.status,
+            o.remark,
+            o.create_time AS createTime
+        FROM sale_order o
+        LEFT JOIN sys_user u ON o.user_id = u.id
+        LEFT JOIN member m ON o.member_id = m.id
+        WHERE o.deleted = 0
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="payType != null">
+            AND o.pay_type = #{payType}
+        </if>
+        <if test="status != null">
+            AND o.status = #{status}
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND DATE(o.create_time) &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND DATE(o.create_time) &lt;= #{endDate}
+        </if>
+        ORDER BY o.create_time DESC
+    </select>
+
+</mapper>
