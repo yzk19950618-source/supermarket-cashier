@@ -7,9 +7,12 @@ import com.cashier.common.result.ResultCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -87,11 +90,35 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 未匹配到 Controller 时请求落到静态资源处理器，常见于路径尾斜杠、Content-Type 与 @RequestBody 不匹配等
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public R<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        log.warn("HTTP 405: {}", e.getMessage());
+        return R.fail(ResultCode.HTTP_METHOD_NOT_ALLOWED.getCode(), ResultCode.HTTP_METHOD_NOT_ALLOWED.getMessage());
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public R<Void> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
+        log.warn("HTTP 415: {}", e.getMessage());
+        return R.fail(ResultCode.UNSUPPORTED_MEDIA_TYPE.getCode(), ResultCode.UNSUPPORTED_MEDIA_TYPE.getMessage());
+    }
+
+    /**
+     * 未匹配的 URL 被静态资源处理器接住时抛出（通常为缺少对应 API）
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public R<Void> handleNoResourceFound(NoResourceFoundException e) {
+        log.warn("NoResourceFound: {}", e.getResourcePath());
+        return R.fail(ResultCode.DATA_NOT_FOUND.getCode(), "API not found: " + e.getResourcePath());
+    }
+
+    /**
      * 处理其他未知异常
      */
     @ExceptionHandler(Exception.class)
     public R<Void> handleException(Exception e) {
-        log.error("系统异常：", e);
+        log.error("Unhandled exception", e);
         return R.fail("系统繁忙，请稍后重试");
     }
 }

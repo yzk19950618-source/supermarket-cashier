@@ -1,11 +1,12 @@
-# 开发环境配置
+# 开发环境配置（默认 MySQL 账号 root / 密码 root，可用 DB_* 环境变量或 application-local.yml 覆盖）
+# 连接失败时：检查本机 MySQL 是否一致，或设环境变量，或在 cashier-backend 目录放置 application-local.yml（参考 application-local.yml.example）
 spring:
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/cashier_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 123456
+    url: ${DB_URL:jdbc:mysql://localhost:3306/cashier_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
     druid:
       initial-size: 5
       min-idle: 5
@@ -19,3 +20,7 @@ spring:
       test-on-return: false
       pool-prepared-statements: true
       max-pool-prepared-statement-per-connection-size: 20
+  config:
+    import:
+      - optional:file:./application-local.yml
+      - optional:file:../application-local.yml

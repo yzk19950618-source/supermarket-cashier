@@ -46,6 +46,15 @@ public class SaleOrder {
     /** 备注 */
     private String remark;
 
+    /** 收货详细地址（展示文案） */
+    private String receiverAddress;
+
+    /** 省市区编码，逗号分隔 */
+    private String receiverRegionCodes;
+
+    /** 附件图片 URL 列表（JSON 数组字符串） */
+    private String attachmentUrls;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

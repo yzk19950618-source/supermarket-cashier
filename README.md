@@ -123,8 +123,10 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/cashier_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     username: root
-    password: your_password
+    password: root
 ```
+
+（若本机 MySQL 不同，可用环境变量 `DB_PASSWORD` 或复制 `application-local.yml.example` 为 `application-local.yml` 覆盖。）
 
 3. 启动后端服务
 
@@ -146,13 +148,15 @@ cd cashier-frontend
 npm install
 ```
 
-2. 启动开发服务器
+2. 启动前端（需先有 `dist/` 构建产物）
 
 ```bash
 npm run dev
 ```
 
-3. 构建生产版本
+当前脚本为 **Vite preview**：默认 **http://localhost:5173**，并把 **`/api` 代理到 http://localhost:8080**，请先启动后端。仅有 `dist`、无完整 Vue 源码时也可这样预览。
+
+3. 若有完整源码，构建生产版本
 
 ```bash
 npm run build
@@ -185,9 +189,17 @@ npm run build
 
 启动后端服务后，访问 Knife4j 接口文档：http://localhost:8080/doc.html
 
+## 订单地址、附件图片（后端）
+
+- **已有数据库**：请执行增量脚本 [`cashier-backend/src/main/resources/db/migration-order-attachments.sql`](cashier-backend/src/main/resources/db/migration-order-attachments.sql)，为 `sale_order` 增加 `receiver_address`、`receiver_region_codes`、`attachment_urls`。
+- **上传**：`POST /api/file/upload`（`multipart/form-data`，字段名 `file`），返回体 `data.url` 为形如 `/uploads/yyyyMM/uuid.jpg` 的路径；浏览器 `<img src="/uploads/...">` 已放行鉴权（仅读文件，生产环境请评估风险）。
+- **结算**：`POST /api/order/settle` 请求体可带 `receiverAddress`、`receiverRegionCodes`、`attachmentUrls`（字符串 URL 数组）。
+- **省市区**：`GET`/`POST /api/region/all` 返回整树；`GET`/`POST /api/region/children?parentId=` 支持懒加载（`parentId` 为空为省级根）。
+- **Vue 接入示例**（省市区、上传缩略图 + 大图预览、订单详情多图）：见 [`cashier-frontend/integration/README.md`](cashier-frontend/integration/README.md)。
+
 ## 说明
 
-前端代码暂未开源，如有需要添加QQ：384287067
+前端完整工程若不在本仓库，可将 `cashier-frontend/integration` 下示例合并到你的 Vue 项目。
 
 ## 许可证
 

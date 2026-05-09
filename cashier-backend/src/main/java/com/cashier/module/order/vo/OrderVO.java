@@ -5,6 +5,8 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Schema(description = "订单信息")
@@ -45,6 +47,15 @@ public class OrderVO {
 
     @Schema(description = "备注")
     private String remark;
+
+    @Schema(description = "收货详细地址")
+    private String receiverAddress;
+
+    @Schema(description = "省市区编码，逗号分隔")
+    private String receiverRegionCodes;
+
+    @Schema(description = "附件图片 URL 列表")
+    private List<String> attachmentUrls = new ArrayList<>();
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

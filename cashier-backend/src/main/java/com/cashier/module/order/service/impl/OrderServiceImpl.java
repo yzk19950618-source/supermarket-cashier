@@ -1,6 +1,8 @@
 package com.cashier.module.order.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -73,6 +75,10 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(rollbackFor = Exception.class)
     public OrderVO settle(SettleDTO dto, Long userId) {
         log.info("开始结算，收银员ID：{}，购物车商品数：{}", userId, dto.getItems().size());
+
+        if (dto.getPayType() == null) {
+            dto.setPayType(CommonConstant.PAY_TYPE_CASH);
+        }
 
         // ===== 1. 校验商品并计算金额 =====
         List<SaleOrderItem> orderItems = new ArrayList<>();
@@ -154,6 +160,11 @@ public class OrderServiceImpl implements OrderService {
         order.setPayType(dto.getPayType());
         order.setStatus(CommonConstant.ORDER_STATUS_COMPLETED);
         order.setRemark(dto.getRemark());
+        order.setReceiverAddress(dto.getReceiverAddress());
+        order.setReceiverRegionCodes(dto.getReceiverRegionCodes());
+        if (CollUtil.isNotEmpty(dto.getAttachmentUrls())) {
+            order.setAttachmentUrls(JSONUtil.toJsonStr(dto.getAttachmentUrls()));
+        }
         saleOrderMapper.insert(order);
 
         // ===== 6. 创建订单明细 =====
@@ -202,6 +213,9 @@ public class OrderServiceImpl implements OrderService {
         vo.setPayType(dto.getPayType());
         vo.setStatus(order.getStatus());
         vo.setCreateTime(order.getCreateTime());
+        vo.setReceiverAddress(order.getReceiverAddress());
+        vo.setReceiverRegionCodes(order.getReceiverRegionCodes());
+        vo.setAttachmentUrls(parseAttachmentUrlList(order.getAttachmentUrls()));
         if (member != null) {
             vo.setMemberId(member.getId());
             vo.setMemberName(member.getName());
@@ -228,7 +242,8 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ResultCode.DATA_NOT_FOUND);
         }
 
-        OrderDetailVO vo = BeanUtil.copyProperties(order, OrderDetailVO.class);
+        OrderDetailVO vo = BeanUtil.copyProperties(order, OrderDetailVO.class, "attachmentUrls");
+        vo.setAttachmentUrls(parseAttachmentUrlList(order.getAttachmentUrls()));
 
         // 查询关联信息
         // 收银员名称（简化处理，也可用 XML 关联查询）
@@ -341,5 +356,17 @@ public class OrderServiceImpl implements OrderService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         return summary;
+    }
+
+    private List<String> parseAttachmentUrlList(String json) {
+        if (StrUtil.isBlank(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            return JSONUtil.toList(json, String.class);
+        } catch (Exception e) {
+            log.warn("parse attachment_urls failed: {}", e.getMessage());
+            return new ArrayList<>();
+        }
     }
 }

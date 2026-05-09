@@ -20,6 +20,8 @@
             o.pay_type AS payType,
             o.status,
             o.remark,
+            o.receiver_address AS receiverAddress,
+            o.receiver_region_codes AS receiverRegionCodes,
             o.create_time AS createTime
         FROM sale_order o
         LEFT JOIN sys_user u ON o.user_id = u.id

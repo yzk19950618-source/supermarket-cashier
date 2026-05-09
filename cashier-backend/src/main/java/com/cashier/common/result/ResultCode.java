@@ -25,6 +25,10 @@ public enum ResultCode {
 
     // 参数相关
     PARAM_ERROR(4010, "参数校验失败"),
+    /** 未匹配到接口处理器（常见于误走静态资源、HTTP 方法或路径不对） */
+    HTTP_METHOD_NOT_ALLOWED(4050, "请求方式不允许"),
+    UNSUPPORTED_MEDIA_TYPE(4150, "不支持的媒体类型"),
+
     DATA_NOT_FOUND(4011, "数据不存在"),
     DATA_ALREADY_EXISTS(4012, "数据已存在"),
 

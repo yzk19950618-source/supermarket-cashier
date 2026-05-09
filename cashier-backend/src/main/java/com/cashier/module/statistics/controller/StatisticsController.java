@@ -8,11 +8,13 @@ import com.cashier.module.statistics.vo.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -24,7 +26,7 @@ import java.util.Map;
  */
 @Tag(name = "数据统计")
 @RestController
-@RequestMapping("/api/statistics")
+@RequestMapping(value = "/api/statistics", consumes = MediaType.ALL_VALUE)
 @RequiredArgsConstructor
 public class StatisticsController {
 
@@ -34,6 +36,15 @@ public class StatisticsController {
     @PostMapping("/dashboard")
     public R<DashboardVO> dashboard() {
         return R.ok(statisticsService.getDashboardData());
+    }
+
+    /**
+     * 首页扩展：回款/还款提醒列表（暂无业务数据时返回空列表）。
+     */
+    @Operation(summary = "回款提醒列表")
+    @PostMapping("/repaymentReminder")
+    public R<List<Map<String, Object>>> repaymentReminder() {
+        return R.ok(Collections.emptyList());
     }
 
     @Operation(summary = "销售趋势")

@@ -1,0 +1,11 @@
+{
+  "name": "cashier-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite preview --host --port 5173 --strictPort"
+  },
+  "devDependencies": {
+    "vite": "^5.2.0"
+  }
+}
