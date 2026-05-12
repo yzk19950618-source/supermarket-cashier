@@ -2,6 +2,7 @@ package com.cashier.module.file.controller;
 
 import com.cashier.common.result.R;
 import com.cashier.common.result.ResultCode;
+import com.cashier.module.file.service.ImageUploadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +18,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,6 +26,7 @@ import java.util.UUID;
 
 /**
  * 本地上传（保存到 app.upload-dir，通过 /uploads/** 访问）。
+ * 图片经服务端压缩为 JPEG（长边与质量见 app.image-upload）；无法解码时保留原文件。
  */
 @Slf4j
 @Tag(name = "文件上传")
@@ -32,9 +35,13 @@ import java.util.UUID;
 public class FileController {
 
     private final Path uploadRoot;
+    private final ImageUploadService imageUploadService;
 
-    public FileController(@Value("${app.upload-dir}") String uploadDir) {
+    public FileController(
+            @Value("${app.upload-dir}") String uploadDir,
+            ImageUploadService imageUploadService) {
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
+        this.imageUploadService = imageUploadService;
     }
 
     @Operation(summary = "上传图片")
@@ -44,24 +51,43 @@ public class FileController {
             return R.fail(ResultCode.PARAM_ERROR.getCode(), "file is empty");
         }
         String original = file.getOriginalFilename();
-        String ext = "";
-        if (original != null && original.contains(".")) {
-            ext = original.substring(original.lastIndexOf('.')).toLowerCase();
-        }
-        if (!ext.matches("\\.(jpg|jpeg|png|gif|webp|bmp)")) {
-            ext = ".jpg";
+        String ext = extensionFromFilename(original);
+        if (!ext.matches("\\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)")) {
+            return R.fail(ResultCode.PARAM_ERROR.getCode(), "仅支持 JPG、PNG、GIF、WebP、BMP、HEIC/HEIF 图片");
         }
         String ym = YearMonth.now().toString().replace("-", "");
         Path dir = uploadRoot.resolve(ym);
         Files.createDirectories(dir);
-        String name = UUID.randomUUID().toString().replace("-", "") + ext;
-        Path target = dir.resolve(name);
-        file.transferTo(target.toFile());
-        String url = "/uploads/" + ym + "/" + name;
+        String base = UUID.randomUUID().toString().replace("-", "");
+        Path temp = Files.createTempFile("cashier-upload-", ".part");
+        try {
+            file.transferTo(temp.toFile());
+            Path targetJpg = dir.resolve(base + ".jpg");
+            if (imageUploadService.tryWriteCompressedJpeg(temp, targetJpg)) {
+                return okBody(ym, base + ".jpg");
+            }
+            Path targetRaw = dir.resolve(base + ext);
+            Files.copy(temp, targetRaw, StandardCopyOption.REPLACE_EXISTING);
+            log.info("Uploaded without re-encode -> {}", targetRaw);
+            return okBody(ym, base + ext);
+        } finally {
+            Files.deleteIfExists(temp);
+        }
+    }
+
+    private static String extensionFromFilename(String original) {
+        if (original == null || !original.contains(".")) {
+            return ".jpg";
+        }
+        return original.substring(original.lastIndexOf('.')).toLowerCase();
+    }
+
+    private R<Map<String, String>> okBody(String ym, String filename) {
+        String url = "/uploads/" + ym + "/" + filename;
         Map<String, String> body = new LinkedHashMap<>();
         body.put("url", url);
         body.put("path", url);
-        log.info("Uploaded file -> {}", target);
+        log.info("Uploaded file -> {}", url);
         return R.ok(body);
     }
 }

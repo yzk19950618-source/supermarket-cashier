@@ -34,7 +34,7 @@ if not exist "%MYSQL_HOME%\bin\mysqld.exe" (
 if not exist "%INIT_SQL%" (
   echo [ERROR] init.sql not found: "%INIT_SQL%"
   echo         请从您的离线备份将 init.sql 复制到 db\ 后再运行。
-  echo         仅升级已有库时，请直接在 MySQL 中执行 db\incremental\ 下的 SQL。
+  echo         仅升级已有库时，请运行 dbsql\run-incremental.bat，或执行 db\incremental\run_all_incremental.sql。
   exit /b 1
 )
 

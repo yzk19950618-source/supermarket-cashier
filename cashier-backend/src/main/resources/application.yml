@@ -13,8 +13,9 @@ spring:
     name: cashier-backend
   servlet:
     multipart:
-      max-file-size: 15MB
-      max-request-size: 20MB
+      # 手机原图可先完整上传，再由服务端压缩落盘（见 app.image-upload）
+      max-file-size: 32MB
+      max-request-size: 40MB
   mvc:
     trailing-slash-match: true
   web:
@@ -64,3 +65,9 @@ knife4j:
 # 上传文件落盘目录（/uploads/** 映射到此目录；可用环境变量 APP_UPLOAD_DIR 覆盖）
 app:
   upload-dir: ${APP_UPLOAD_DIR:${user.home}/cashier-uploads}
+  # 图片上传：先接收 multipart，再压缩为 JPEG（失败则原样保存，如个别格式无法解码）
+  image-upload:
+    # 长边像素上限（等比缩小；已小于则基本不重采样）
+    max-long-edge: 2048
+    # JPEG 质量 0~1
+    jpeg-quality: 0.82

@@ -12,6 +12,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
@@ -111,6 +112,13 @@ public class GlobalExceptionHandler {
     public R<Void> handleNoResourceFound(NoResourceFoundException e) {
         log.warn("NoResourceFound: {}", e.getResourcePath());
         return R.fail(ResultCode.DATA_NOT_FOUND.getCode(), "API not found: " + e.getResourcePath());
+    }
+
+    /** 超过 spring.servlet.multipart.max-file-size / max-request-size */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public R<Void> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e) {
+        log.warn("Multipart limit exceeded: {}", e.getMessage());
+        return R.fail(ResultCode.PARAM_ERROR.getCode(), "上传文件过大，请换一张较小的图片或联系管理员调整上传大小限制");
     }
 
     /**

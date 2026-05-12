@@ -138,13 +138,11 @@ onMounted(() => {
         </n-space>
       </n-layout-header>
       <n-layout-content content-style="padding: 20px; overflow: visible; min-height: calc(100vh - 128px);">
-        <router-view v-slot="{ Component, route: r }">
-          <template v-if="r.meta.keepAlive">
-            <keep-alive>
-              <component :is="Component" :key="r.path" />
-            </keep-alive>
-          </template>
-          <component :is="Component" v-else :key="r.fullPath" />
+        <router-view v-slot="{ Component, route }">
+          <!-- 仅缓存收银台：离开侧边栏其它页时不再卸载 keep-alive，避免购物车/表单丢失 -->
+          <keep-alive :include="['CashierView']">
+            <component :is="Component" :key="route.fullPath" />
+          </keep-alive>
         </router-view>
       </n-layout-content>
       <n-layout-footer bordered class="footer">从河心连心农资账务系统</n-layout-footer>

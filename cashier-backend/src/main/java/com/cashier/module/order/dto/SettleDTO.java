@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -56,7 +57,7 @@ public class SettleDTO {
     @Schema(description = "行政区划编码串（逗号分隔）")
     private String regionCodes;
 
-    @Schema(description = "定价/优惠说明（写入 discount 业务外的文字说明，可选）")
+    @Schema(description = "定价/减免说明（可选；不参与金额计算）")
     private String pricingNote;
 
     /** 客户姓名（与库列 customer_name 对应；可与 remark 内「客户:」重复，优先本字段） */
@@ -90,4 +91,8 @@ public class SettleDTO {
     @JsonAlias({"order_date"})
     @Schema(description = "订单日期")
     private String orderDate;
+
+    @JsonAlias({"receivable_amount"})
+    @Schema(description = "约定应收合计（与收银台「应收」一致；空则等于商品总额）")
+    private BigDecimal receivableAmount;
 }

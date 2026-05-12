@@ -40,17 +40,26 @@ public class Goods {
     /** 零售价 */
     private BigDecimal sellingPrice;
 
-    /** 库存数量 */
-    private Integer stock;
+    /** 库存数量（袋；与扣减一致，可为小数以匹配赠品扣半袋等） */
+    private BigDecimal stock;
 
     /** 库存预警值 */
-    private Integer stockWarning;
+    private BigDecimal stockWarning;
 
     /** 商品图片 */
     private String image;
 
     /** 状态：0-下架 1-上架 */
     private Integer status;
+
+    /** 同款买赠：1 启用 */
+    private Integer promoEnabled;
+
+    /** 满多少袋触发（买满，整数） */
+    private Integer promoBuyQty;
+
+    /** 送多少同款（可小数袋） */
+    private BigDecimal promoGiftQty;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

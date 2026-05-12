@@ -1,11 +1,15 @@
+<script>
+/** keep-alive include 按组件名匹配 */
+export default { name: 'CashierView' }
+</script>
 <script setup>
 /**
  * 对齐离线包与交付截图：省/市/区、镇/街道、村/社区均为浏览器原生 <select>；日期为 <input type="date">。
  * 地区与「地址管理」同源：`POST /region/all` 扁平化后省市区联动；镇/村按区县、镇编码懒加载 `GET /region/children`。
  * 结算请求：结构化 JSON（客户、地址、日期、区划编码、备注等独立字段）；remark 仅承载自由文本备注。
  */
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from 'vue'
+import { useMessage, NImage, NSwitch } from 'naive-ui'
 import { get, post } from '@/utils/request'
 import { resolveMediaUrl } from '@/utils/mediaUrl'
 import { useCashierCacheStore } from '@/stores/cashierCache'
@@ -18,6 +22,31 @@ import {
 
 const DRAFT_KEY = 'cashier_draft_v1'
 const message = useMessage()
+
+/** 赠送数量最多三位小数；购买数量、买满件数为整数 */
+const GIFT_QTY_DECIMALS = 3
+function roundGiftQty(n) {
+  const x = Number(n)
+  if (!Number.isFinite(x)) return 0
+  const p = 10 ** GIFT_QTY_DECIMALS
+  return Math.round(x * p) / p
+}
+
+/** 购买数量、买满件数：正整数袋 */
+function intBagQty(n) {
+  const x = Math.round(Number(n))
+  if (!Number.isFinite(x)) return 1
+  return Math.max(1, x)
+}
+
+function isPositiveIntBag(n) {
+  const x = Math.round(Number(n))
+  return Number.isFinite(x) && x >= 1
+}
+
+function isPositiveGiftQty(n) {
+  return n != null && Number.isFinite(Number(n)) && Number(n) > 0
+}
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -321,7 +350,7 @@ const totalAmount = computed(() =>
   cart.reduce((s, row) => s + Number(row.sellingPrice || 0) * Number(row.quantity || 0), 0),
 )
 
-/** 对齐离线「应收」：可手动改低，仅写入备注（后端仍按商品价汇总） */
+/** 对齐约定应收：可手动改低；与后端 receivableAmount / discount_amount 一致 */
 const realAmount = computed(() => {
   const I = totalAmount.value
   const m = form.manualRealAmount
@@ -331,7 +360,7 @@ const realAmount = computed(() => {
   return Number(Math.max(0, Math.min(I, x)).toFixed(2))
 })
 
-const discountAmount = computed(() => Number((totalAmount.value - realAmount.value).toFixed(2)))
+const manualReduction = computed(() => Number((totalAmount.value - realAmount.value).toFixed(2)))
 
 function qtyOf(id) {
   return qtyMap.value.get(id) || 0
@@ -370,6 +399,7 @@ async function loadGoods() {
       message.error(cashierCache.goodsError)
     }
     applyGoodsKeywordFilter()
+    normalizeCartPromoDefaults()
   } catch (e) {
     message.error(e.message || cashierCache.goodsError || '商品加载失败')
   } finally {
@@ -377,10 +407,66 @@ async function loadGoods() {
   }
 }
 
+function goodsPromoDefaultsOk(row) {
+  const b = row._promoBuyDefault != null && isPositiveIntBag(row._promoBuyDefault)
+  const q = row._promoGiftDefault != null && isPositiveGiftQty(row._promoGiftDefault)
+  return b && q
+}
+
+function normalizeCartPromoDefaults() {
+  for (const row of cart) {
+    if (row.promoApply === undefined) row.promoApply = false
+    const g = cashierCache.goodsAll.find((x) => x.id === row.id)
+    if (!g) continue
+    if (row._promoBuyDefault === undefined) {
+      row._promoBuyDefault = g.promoBuyQty != null ? intBagQty(g.promoBuyQty) : null
+    }
+    if (row._promoGiftDefault === undefined) {
+      row._promoGiftDefault = g.promoGiftQty != null ? roundGiftQty(g.promoGiftQty) : null
+    }
+  }
+}
+
+/** 用当前上架商品列表刷新购物车行上的商品属性（保留数量与买赠开关/覆盖值） */
+function syncCartLinesFromCatalog() {
+  for (const row of cart) {
+    const g = cashierCache.goodsAll.find((x) => x.id === row.id)
+    if (!g) continue
+    row.name = g.name
+    row.sellingPrice = g.sellingPrice
+    row.unit = g.unit
+    row.image = g.image
+    row.barcode = g.barcode
+    row.categoryName = g.categoryName
+    row.nameInitial = g.nameInitial ?? g.name_initial
+    row.promoEnabled = g.promoEnabled
+    row._promoBuyDefault = g.promoBuyQty != null ? intBagQty(g.promoBuyQty) : null
+    row._promoGiftDefault = g.promoGiftQty != null ? roundGiftQty(g.promoGiftQty) : null
+    row.quantity = intBagQty(row.quantity)
+    if (Number(g.promoEnabled) !== 1) {
+      row.promoApply = false
+      row.promoBuyQty = null
+      row.promoGiftQty = null
+    } else {
+      if (row.promoBuyQty != null) row.promoBuyQty = intBagQty(row.promoBuyQty)
+      if (row.promoGiftQty != null) row.promoGiftQty = roundGiftQty(row.promoGiftQty)
+    }
+  }
+}
+
 function addToCart(g) {
   const row = cart.find((x) => x.id === g.id)
   if (row) row.quantity += 1
-  else cart.push({ ...g, quantity: 1 })
+  else
+    cart.push({
+      ...g,
+      quantity: 1,
+      _promoBuyDefault: g.promoBuyQty != null ? intBagQty(g.promoBuyQty) : null,
+      _promoGiftDefault: g.promoGiftQty != null ? roundGiftQty(g.promoGiftQty) : null,
+      promoBuyQty: null,
+      promoGiftQty: null,
+      promoApply: false,
+    })
 }
 
 function removeFromCart(id) {
@@ -564,20 +650,57 @@ async function onSettle() {
     return
   }
 
+  for (const c of cart) {
+    if (!isPositiveIntBag(c.quantity)) {
+      message.warning(`商品「${c.name || ''}」购买数量须为不小于 1 的整数（袋）`)
+      return
+    }
+  }
+
+  for (const c of cart) {
+    if (Number(c.promoEnabled) !== 1) continue
+    if (!c.promoApply) continue
+    if (!goodsPromoDefaultsOk(c)) {
+      const b = c.promoBuyQty != null && isPositiveIntBag(c.promoBuyQty)
+      const g = c.promoGiftQty != null && isPositiveGiftQty(c.promoGiftQty)
+      if (!b || !g) {
+        message.warning(
+          `商品「${c.name || ''}」未配置默认买满/赠送件数，参与买满送时请填写「买满件数」（整数）与「赠送数量」（可小数）`,
+        )
+        return
+      }
+    }
+  }
+
   loading.value = true
   try {
     const pricingNote =
-      discountAmount.value > 0.009
-        ? `约定应收 ${realAmount.value.toFixed(2)} 元（总额 ${totalAmount.value.toFixed(2)}，差额为优惠说明）`
+      manualReduction.value > 0.009
+        ? `约定应收 ${realAmount.value.toFixed(2)} 元（商品总额 ${totalAmount.value.toFixed(2)}）`
         : undefined
     const res = await post('/order/settle', {
       memberId: selectedMember.value?.id ?? undefined,
       memberCardNo: selectedMember.value?.phone || selectedMember.value?.cardNo || undefined,
       payType: 0,
-      items: cart.map((c) => ({
-        goodsId: c.id,
-        quantity: Math.max(1, Math.floor(Number(c.quantity)) || 1),
-      })),
+      receivableAmount: realAmount.value,
+      items: cart.map((c) => {
+        const linePromo = Number(c.promoEnabled) === 1 && !!c.promoApply
+        const ob =
+          linePromo && c.promoBuyQty != null && isPositiveIntBag(c.promoBuyQty)
+            ? intBagQty(c.promoBuyQty)
+            : undefined
+        const og =
+          linePromo && c.promoGiftQty != null && isPositiveGiftQty(c.promoGiftQty)
+            ? roundGiftQty(c.promoGiftQty)
+            : undefined
+        return {
+          goodsId: c.id,
+          quantity: intBagQty(c.quantity),
+          promoEnabled: linePromo,
+          promoBuyQty: ob,
+          promoGiftQty: og,
+        }
+      }),
       customerName: effectiveCustomerName() || undefined,
       customerPhone: String(form.customerPhone ?? '').trim() || undefined,
       customerAddress: fullReceiverAddress.value.trim(),
@@ -653,6 +776,14 @@ function saveDraft() {
       },
       selTownCode: selTownCode.value,
       selVillageCode: selVillageCode.value,
+      selectedMemberSnap: selectedMember.value
+        ? {
+            id: selectedMember.value.id,
+            name: selectedMember.value.name,
+            phone: selectedMember.value.phone,
+            cardNo: selectedMember.value.cardNo,
+          }
+        : null,
     }),
   )
 }
@@ -664,11 +795,15 @@ async function loadDraft() {
     const d = JSON.parse(raw)
     keyword.value = d.keyword || ''
     if (Array.isArray(d.cart)) cart.splice(0, cart.length, ...d.cart)
+    if (d.selectedMemberSnap && typeof d.selectedMemberSnap === 'object' && d.selectedMemberSnap.id) {
+      selectedMember.value = { ...d.selectedMemberSnap }
+    }
     if (typeof d.memberHistoryRemark === 'string') {
       memberHistoryRemark.value = d.memberHistoryRemark
     }
     if (d.settleForm && typeof d.settleForm === 'object') {
       Object.assign(form, d.settleForm)
+      delete form.promoEnabled
     }
     if (d.settleForm?.customerAddress && !d.settleForm?.customerDetailAddress) {
       form.customerDetailAddress = d.settleForm.customerAddress
@@ -704,6 +839,7 @@ async function loadDraft() {
     }
     syncTownLabelFromSelection()
     syncVillageLabelFromSelection()
+    normalizeCartPromoDefaults()
   } catch {
     /* ignore */
   }
@@ -723,17 +859,39 @@ watch(
     selDistrictName: selDistrictName.value,
     selTownCode: selTownCode.value,
     selVillageCode: selVillageCode.value,
+    memberId: selectedMember.value?.id ?? null,
   }),
   saveDraft,
   { deep: true },
 )
 
+/** 首次进入已由 onMounted 拉取商品，跳过一次 onActivated 内的重复请求 */
+const skipGoodsRefreshOnNextActivate = ref(true)
+
+onActivated(async () => {
+  if (skipGoodsRefreshOnNextActivate.value) {
+    skipGoodsRefreshOnNextActivate.value = false
+    syncCartLinesFromCatalog()
+    applyGoodsKeywordFilter()
+    normalizeCartPromoDefaults()
+    return
+  }
+  try {
+    await cashierCache.refreshGoodsOnShelf()
+  } catch {
+    /* ignore */
+  }
+  syncCartLinesFromCatalog()
+  applyGoodsKeywordFilter()
+  normalizeCartPromoDefaults()
+})
+
 initDefaultDates()
 
 onMounted(async () => {
   await loadRegionCatalog()
-  await loadDraft()
   await loadGoods()
+  await loadDraft()
 })
 </script>
 
@@ -758,12 +916,13 @@ onMounted(async () => {
               <n-grid :cols="4" :x-gap="12" :y-gap="12">
                 <n-gi v-for="g in block.items" :key="g.id">
                   <n-card hoverable class="goods-card" @click="addToCart(g)">
-                    <div class="goods-img-wrap">
-                      <img
+                    <div class="goods-img-wrap" @click.stop>
+                      <n-image
                         v-if="g.image"
                         :src="resolveMediaUrl(g.image)"
                         class="goods-img"
-                        alt=""
+                        :img-props="{ style: { width: '100%', height: '100%', objectFit: 'cover' } }"
+                        object-fit="cover"
                       />
                       <div v-else class="goods-img-placeholder">暂无图片</div>
                     </div>
@@ -791,25 +950,75 @@ onMounted(async () => {
           title="购物车"
         >
           <div class="cart-body">
-            <div v-for="row in cart" :key="row.id" class="cart-item">
-              <button type="button" class="delete-x-btn" @click="removeFromCart(row.id)">×</button>
-              <div class="cart-meta">
-                <div>{{ row.name }}</div>
-              </div>
-              <n-space align="center">
-                <n-input-number
-                  v-model:value="row.quantity"
-                  class="cart-qty-input"
-                  :min="1"
-                  size="small"
-                />
-                <span class="money">
-                  ￥{{ (Number(row.quantity) * Number(row.sellingPrice || 0)).toFixed(2) }}
-                </span>
-              </n-space>
-            </div>
             <n-empty v-if="!cart.length" description="暂无添加商品" />
-            <n-button v-if="cart.length" quaternary type="error" @click="clearCart">清空购物车</n-button>
+            <template v-else>
+              <div class="cart-toolbar">
+                <n-button quaternary type="error" size="small" @click="clearCart">清空购物车</n-button>
+              </div>
+              <div v-for="row in cart" :key="row.id" class="cart-item">
+                <button type="button" class="delete-x-btn" @click="removeFromCart(row.id)">×</button>
+                <div class="cart-item-main">
+                  <div class="cart-meta">
+                    <div class="cart-item-title">{{ row.name }}</div>
+                    <div
+                      v-if="Number(row.promoEnabled) === 1"
+                      class="cart-promo-block"
+                      @click.stop
+                    >
+                      <div class="cart-promo-head">
+                        <span class="muted">同款买满送</span>
+                        <n-switch v-model:value="row.promoApply" size="small" />
+                      </div>
+                      <div v-if="row.promoApply" class="cart-promo-fields">
+                        <p v-if="goodsPromoDefaultsOk(row)" class="cart-promo-hint muted">
+                          已设默认：满 {{ row._promoBuyDefault }} 袋送 {{ row._promoGiftDefault }}（可留空使用默认）
+                        </p>
+                        <p v-else class="cart-promo-hint muted">未设默认买满/赠送，请填写下列两项</p>
+                        <div class="cart-promo-field">
+                          <span class="cart-promo-field-label">买满件数</span>
+                          <n-input-number
+                            v-model:value="row.promoBuyQty"
+                            class="cart-promo-input-full"
+                            :min="1"
+                            :step="1"
+                            :precision="0"
+                            size="small"
+                            :placeholder="goodsPromoDefaultsOk(row) ? '默认' : '必填'"
+                            :clearable="goodsPromoDefaultsOk(row)"
+                          />
+                        </div>
+                        <div class="cart-promo-field">
+                          <span class="cart-promo-field-label">赠送数量</span>
+                          <n-input-number
+                            v-model:value="row.promoGiftQty"
+                            class="cart-promo-input-full"
+                            :min="0.001"
+                            :step="0.1"
+                            :precision="3"
+                            size="small"
+                            :placeholder="goodsPromoDefaultsOk(row) ? '默认' : '必填'"
+                            :clearable="goodsPromoDefaultsOk(row)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                    <n-space align="center" justify="space-between" wrap class="cart-item-qty-row">
+                    <n-input-number
+                      v-model:value="row.quantity"
+                      class="cart-qty-input"
+                      :min="1"
+                      :step="1"
+                      :precision="0"
+                      size="small"
+                    />
+                    <span class="money">
+                      ￥{{ (Number(row.quantity) * Number(row.sellingPrice || 0)).toFixed(2) }}
+                    </span>
+                  </n-space>
+                </div>
+              </div>
+            </template>
           </div>
         </n-card>
 
@@ -986,8 +1195,8 @@ onMounted(async () => {
                 <div class="amount-value">{{ totalAmount.toFixed(2) }}</div>
               </div>
               <div class="amount-card discount-card">
-                <div class="amount-label">优惠</div>
-                <div class="amount-value">{{ discountAmount.toFixed(2) }}</div>
+                <div class="amount-label">减免</div>
+                <div class="amount-value">{{ manualReduction.toFixed(2) }}</div>
               </div>
               <div class="amount-card real-card">
                 <div class="amount-label">应收</div>
@@ -1127,6 +1336,60 @@ onMounted(async () => {
   flex-direction: column;
   gap: 8px;
 }
+.cart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cart-promo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+.cart-promo-block {
+  width: 100%;
+  max-width: 100%;
+}
+.cart-promo-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+}
+.cart-promo-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+.cart-promo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.cart-promo-field-label {
+  font-size: 12px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+.cart-promo-input-full {
+  width: 100% !important;
+  min-width: 0;
+}
+.cart-promo-input-full :deep(.n-input) {
+  min-width: 0;
+}
+.cart-promo-input-full :deep(.n-input__input-el) {
+  text-align: left;
+  min-width: 4.5rem;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .cart-card :deep(.n-card__content) {
   padding-top: 8px;
 }
@@ -1147,13 +1410,41 @@ onMounted(async () => {
 .cart-item {
   position: relative;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 24px 10px 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 28px 12px 0;
   border-bottom: 1px solid #eef2f7;
+}
+.cart-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+.cart-item-title {
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.cart-item-qty-row {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 100%;
+}
+.cart-item-qty-row :deep(.n-space) {
+  width: 100%;
+}
+.cart-item-qty-row :deep(.n-space-item:first-child) {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 .cart-meta {
   padding-right: 18px;
+  min-width: 0;
+  flex: 1;
 }
 .delete-x-btn {
   position: absolute;
@@ -1171,7 +1462,18 @@ onMounted(async () => {
   z-index: 2;
 }
 .cart-qty-input {
-  width: 88px;
+  width: 100%;
+  min-width: 132px;
+  max-width: 220px;
+}
+.cart-qty-input :deep(.n-input) {
+  min-width: 0;
+}
+.cart-qty-input :deep(.n-input__input-el) {
+  min-width: 5.5rem;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
 }
 /* 收银台右侧：原生表单（与浏览器默认 select/input 一致） */
 .cashier-native-form {

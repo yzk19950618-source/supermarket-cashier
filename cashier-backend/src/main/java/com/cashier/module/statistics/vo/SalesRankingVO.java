@@ -12,8 +12,8 @@ public class SalesRankingVO {
     @Schema(description = "商品名称")
     private String goodsName;
 
-    @Schema(description = "总销量")
-    private Integer totalQuantity;
+    @Schema(description = "总销量（可小数）")
+    private BigDecimal totalQuantity;
 
     @Schema(description = "总销售额")
     private BigDecimal totalAmount;

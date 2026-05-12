@@ -23,7 +23,7 @@ const routes = [
         path: 'cashier',
         name: 'cashier',
         component: () => import('@/views/CashierView.vue'),
-        meta: { title: '收银台', keepAlive: true },
+        meta: { title: '收银台' },
       },
       {
         path: 'goods',

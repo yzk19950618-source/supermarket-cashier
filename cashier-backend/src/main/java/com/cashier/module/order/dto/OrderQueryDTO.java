@@ -30,4 +30,10 @@ public class OrderQueryDTO {
 
     @Schema(description = "会员/客户ID（筛选该客户全部订单）")
     private Long memberId;
+
+    @Schema(description = "客户姓名（模糊匹配订单客户名或会员姓名）")
+    private String customerName;
+
+    @Schema(description = "客户电话（模糊匹配订单客户电话或会员手机号）")
+    private String customerPhone;
 }

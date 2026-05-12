@@ -9,7 +9,7 @@ Contents:
 - frontend/dist/       Vite build (also bundled in jar; start.bat loads both)
 - db/README.txt        notes: incremental SQL under db/incremental/
 - db/incremental/      same SQL as text reference; see README.md
-- dbsql/               run-incremental.bat + copies of *.sql: double-click to apply via bundled mysql (MySQL must be running)
+- dbsql/               run-incremental.bat only (reads SQL from db/incremental/)
 - scripts/init/init-db.bat      first install: copy your backup init.sql into db\ then run
 - scripts/init/init-region.bat  regions: copy region-init.sql from backup into db\ then run
 - scripts/init/init-all.bat     runs both

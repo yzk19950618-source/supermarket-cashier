@@ -1,10 +1,23 @@
 @echo off
-setlocal
-chcp 65001 >nul
+setlocal EnableExtensions
+cd /d "%~dp0"
 
-rem 本目录 dbsql 与 offline 根目录下的 mysql、scripts 同级
-set "HERE=%~dp0"
-for %%I in ("%HERE%..") do set "APP_HOME=%%~fI"
+rem Canonical SQL: ..\db\incremental\run_all_incremental.sql (single copy). Fallback: same folder as this bat.
+set "SQLFILE=%~dp0..\db\incremental\run_all_incremental.sql"
+if not exist "%SQLFILE%" set "SQLFILE=%~dp0run_all_incremental.sql"
+if not exist "%SQLFILE%" (
+  echo [ERROR] run_all_incremental.sql not found. Tried:
+  echo   "%~dp0..\db\incremental\run_all_incremental.sql"
+  echo   "%~dp0run_all_incremental.sql"
+  echo Ensure db\incremental\run_all_incremental.sql exists under offline root, or run scripts\pack-db-incremental.ps1 from repo.
+  exit /b 1
+)
+for %%I in ("%SQLFILE%") do set "SQLFILE=%%~fI"
+
+pushd "%~dp0.."
+set "APP_HOME=%CD%"
+popd
+cd /d "%~dp0"
 
 set "MYSQL_ROOT=%APP_HOME%\mysql"
 set "MYSQL_HOME=%MYSQL_ROOT%"
@@ -15,31 +28,23 @@ if not exist "%MYSQL_HOME%\bin\mysql.exe" (
 )
 
 if not exist "%MYSQL_HOME%\bin\mysql.exe" (
-  echo [ERROR] 未找到 mysql.exe，请确认离线包内已解压 MySQL 到: "%MYSQL_ROOT%"
+  echo [ERROR] mysql.exe not found. Expected under: "%MYSQL_ROOT%"
   exit /b 1
 )
 
 "%MYSQL_HOME%\bin\mysqladmin.exe" -uroot -proot ping >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] MySQL 未启动或 root 密码不是离线默认。请先执行 scripts\runtime\start.bat 启动后再运行本脚本。
+  echo [ERROR] MySQL not running or root password is not the offline default. Start MySQL first ^(e.g. scripts\runtime\start.bat^).
   exit /b 1
 )
 
-dir /b /o:n "%HERE%*.sql" 2>nul | findstr /r "." >nul
+echo [INFO] Using SQL file: %SQLFILE%
+echo [INFO] Applying to database cashier_db ^(idempotent^) ...
+"%MYSQL_HOME%\bin\mysql.exe" --default-character-set=utf8mb4 -uroot -proot cashier_db < "%SQLFILE%"
 if errorlevel 1 (
-  echo [WARN] 本目录下没有 .sql 文件，无需执行。
-  exit /b 0
+  echo [ERROR] run_all_incremental.sql failed.
+  exit /b 1
 )
 
-echo [INFO] 将按文件名顺序执行本目录内所有 .sql（目标库见各脚本内 USE 语句，一般为 cashier_db）
-for /f "delims=" %%F in ('dir /b /o:n "%HERE%*.sql"') do (
-  echo [INFO] 正在执行: %%F
-  "%MYSQL_HOME%\bin\mysql.exe" --default-character-set=utf8mb4 -uroot -proot cashier_db < "%HERE%%%F"
-  if errorlevel 1 (
-    echo [ERROR] 执行失败: %%F
-    exit /b 1
-  )
-)
-
-echo [OK] dbsql 内增量 SQL 已全部执行完毕。
+echo [OK] Done.
 exit /b 0

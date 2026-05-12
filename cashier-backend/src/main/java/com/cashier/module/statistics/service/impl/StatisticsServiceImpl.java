@@ -129,6 +129,47 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         vo.setYearTotalCollectedAmount(repayYear.add(orphanYear).setScale(2, RoundingMode.HALF_UP));
 
+        // ----- 当前待收、逾期、未支付、库存预警 -----
+        List<SaleOrder> debtOrders = saleOrderMapper.selectList(
+                new LambdaQueryWrapper<SaleOrder>()
+                        .eq(SaleOrder::getDeleted, 0)
+                        .ne(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_REFUNDED)
+                        .select(SaleOrder::getId, SaleOrder::getTotalAmount, SaleOrder::getDiscountAmount,
+                                SaleOrder::getRealAmount, SaleOrder::getStatus, SaleOrder::getRepayDate));
+        BigDecimal totalPending = BigDecimal.ZERO;
+        int pendingCnt = 0;
+        int overdueCnt = 0;
+        BigDecimal overdueAmt = BigDecimal.ZERO;
+        for (SaleOrder o : debtOrders) {
+            BigDecimal rem = orderRemainDebt(o);
+            if (rem.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            totalPending = totalPending.add(rem);
+            pendingCnt++;
+            if (o.getRepayDate() != null && o.getRepayDate().isBefore(today)) {
+                overdueCnt++;
+                overdueAmt = overdueAmt.add(rem);
+            }
+        }
+        vo.setTotalPendingAmount(totalPending.setScale(2, RoundingMode.HALF_UP));
+        vo.setPendingOrderCount(pendingCnt);
+        vo.setOverdueOrderCount(overdueCnt);
+        vo.setOverduePendingAmount(overdueAmt.setScale(2, RoundingMode.HALF_UP));
+
+        long unpaid = saleOrderMapper.selectCount(
+                new LambdaQueryWrapper<SaleOrder>()
+                        .eq(SaleOrder::getDeleted, 0)
+                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_UNPAID));
+        vo.setUnpaidOrderCount((int) Math.min(unpaid, Integer.MAX_VALUE));
+
+        long lowStock = goodsMapper.selectCount(
+                new LambdaQueryWrapper<Goods>()
+                        .eq(Goods::getDeleted, 0)
+                        .eq(Goods::getStatus, CommonConstant.STATUS_ENABLED)
+                        .apply("stock <= stock_warning"));
+        vo.setLowStockGoodsCount((int) Math.min(lowStock, Integer.MAX_VALUE));
+
         return vo;
     }
 
@@ -161,29 +202,39 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Override
     public SalesTrendVO getSalesTrend(Integer days) {
         SalesTrendVO vo = new SalesTrendVO();
+        int n = days != null && days > 0 ? days : 7;
         List<String> dates = new ArrayList<>();
         List<BigDecimal> amounts = new ArrayList<>();
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd");
+        LocalDate endDate = LocalDate.now();
+        LocalDate startDate = endDate.minusDays(n - 1L);
+        LocalDateTime rangeStart = LocalDateTime.of(startDate, LocalTime.MIN);
+        LocalDateTime rangeEnd = LocalDateTime.of(endDate, LocalTime.MAX);
 
-        for (int i = days - 1; i >= 0; i--) {
+        List<SaleOrder> rangeOrders = saleOrderMapper.selectList(
+                new LambdaQueryWrapper<SaleOrder>()
+                        .between(SaleOrder::getCreateTime, rangeStart, rangeEnd)
+                        .eq(SaleOrder::getDeleted, 0)
+                        .ne(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_REFUNDED)
+                        .select(SaleOrder::getCreateTime, SaleOrder::getTotalAmount, SaleOrder::getDiscountAmount,
+                                SaleOrder::getRealAmount));
+
+        Map<LocalDate, BigDecimal> pendingByDay = new HashMap<>();
+        for (SaleOrder o : rangeOrders) {
+            if (o.getCreateTime() == null) {
+                continue;
+            }
+            LocalDate d = o.getCreateTime().toLocalDate();
+            pendingByDay.merge(d, orderRemainDebt(o), BigDecimal::add);
+        }
+
+        for (int i = n - 1; i >= 0; i--) {
             LocalDate date = LocalDate.now().minusDays(i);
             dates.add(date.format(formatter));
-
-            LocalDateTime dayStart = LocalDateTime.of(date, LocalTime.MIN);
-            LocalDateTime dayEnd = LocalDateTime.of(date, LocalTime.MAX);
-
-            // 查询当天已完成订单的销售额
-            List<SaleOrder> dayOrders = saleOrderMapper.selectList(
-                    new LambdaQueryWrapper<SaleOrder>()
-                            .between(SaleOrder::getCreateTime, dayStart, dayEnd)
-                            .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_PAID)
-                            .eq(SaleOrder::getDeleted, 0));
-
-            BigDecimal daySales = dayOrders.stream()
-                    .map(SaleOrder::getRealAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            amounts.add(daySales);
+            BigDecimal dayPending = pendingByDay.getOrDefault(date, BigDecimal.ZERO)
+                    .setScale(2, RoundingMode.HALF_UP);
+            amounts.add(dayPending);
         }
 
         vo.setDates(dates);
@@ -222,11 +273,12 @@ public class StatisticsServiceImpl implements StatisticsService {
             SalesRankingVO ranking = rankingMap.computeIfAbsent(item.getGoodsName(), name -> {
                 SalesRankingVO r = new SalesRankingVO();
                 r.setGoodsName(name);
-                r.setTotalQuantity(0);
+                r.setTotalQuantity(BigDecimal.ZERO);
                 r.setTotalAmount(BigDecimal.ZERO);
                 return r;
             });
-            ranking.setTotalQuantity(ranking.getTotalQuantity() + item.getQuantity());
+            ranking.setTotalQuantity(ranking.getTotalQuantity().add(
+                    item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO));
             ranking.setTotalAmount(ranking.getTotalAmount().add(item.getSubtotal()));
         }
 

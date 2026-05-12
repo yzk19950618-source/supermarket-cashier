@@ -93,7 +93,7 @@ public class PurchaseServiceImpl extends ServiceImpl<PurchaseRecordMapper, Purch
         save(record);
 
         // 增加商品库存
-        goodsMapper.addStock(dto.getGoodsId(), dto.getQuantity());
+        goodsMapper.addStock(dto.getGoodsId(), BigDecimal.valueOf(dto.getQuantity()));
 
         // 更新商品进货价（以最新进货价为准）
         Goods updateGoods = new Goods();

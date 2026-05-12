@@ -40,23 +40,23 @@ Pop-Location
 $dbRoot = Join-Path $OfflineRoot 'db'
 $incSrc = Join-Path $RepoRoot 'cashier-backend\src\main\resources\db\incremental'
 $incDest = Join-Path $dbRoot 'incremental'
+$runAllSql = Join-Path $incSrc 'run_all_incremental.sql'
+if (-not (Test-Path $runAllSql)) { Write-Error "Missing: $runAllSql"; exit 1 }
 $pInit = Join-Path $dbRoot 'init.sql'
 $pRegion = Join-Path $dbRoot 'region-init.sql'
 if (Test-Path $pInit) { Remove-Item $pInit -Force }
 if (Test-Path $pRegion) { Remove-Item $pRegion -Force }
 if (Test-Path $incDest) { Remove-Item $incDest -Recurse -Force }
 New-Item -ItemType Directory -Path $incDest -Force | Out-Null
-Copy-Item -Path (Join-Path $incSrc '*.sql') -Destination $incDest -Force
+Copy-Item -Path $runAllSql -Destination $incDest -Force
 Copy-Item -Path (Join-Path $RepoRoot 'cashier-backend\src\main\resources\db\incremental\README.md') -Destination $incDest -ErrorAction SilentlyContinue
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\db-README.txt') -Destination (Join-Path $dbRoot 'README.txt') -Force
 
 $dbsqlDest = Join-Path $OfflineRoot 'dbsql'
 if (Test-Path $dbsqlDest) { Remove-Item $dbsqlDest -Recurse -Force }
 New-Item -ItemType Directory -Path $dbsqlDest -Force | Out-Null
-Copy-Item -Path (Join-Path $incSrc '*.sql') -Destination $dbsqlDest -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\dbsql\run-incremental.bat') -Destination $dbsqlDest -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\dbsql\README.txt') -Destination $dbsqlDest -Force
-Copy-Item -Path (Join-Path $incSrc 'README.md') -Destination $dbsqlDest -ErrorAction SilentlyContinue
 
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\runtime\start.bat') -Destination (Join-Path $OfflineRoot 'scripts\runtime\start.bat') -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\runtime\stop.bat') -Destination (Join-Path $OfflineRoot 'scripts\runtime\stop.bat') -Force

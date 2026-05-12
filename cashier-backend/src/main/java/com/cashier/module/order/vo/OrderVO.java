@@ -38,7 +38,7 @@ public class OrderVO {
     @Schema(description = "累计实收（已还金额），对应库字段 real_amount；分批还款累加至此")
     private BigDecimal realAmount;
 
-    @Schema(description = "应收合计（优惠后）= totalAmount − discountAmount；与分批还款上限一致")
+    @Schema(description = "应收合计 = totalAmount − discountAmount（discountAmount 为约定减免额）；与分批还款上限一致")
     private BigDecimal receivableAmount;
 
     @Schema(description = "累计已还（与 realAmount 同义，便于老前端只认 paid 语义时读取）")

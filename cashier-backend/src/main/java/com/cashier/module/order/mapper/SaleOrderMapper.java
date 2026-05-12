@@ -8,6 +8,8 @@ import com.cashier.module.order.vo.OrderVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 /**
  * 销售订单 Mapper
  *
@@ -26,5 +28,20 @@ public interface SaleOrderMapper extends BaseMapper<SaleOrder> {
                                 @Param("status") Integer status,
                                 @Param("startDate") String startDate,
                                 @Param("endDate") String endDate,
-                                @Param("memberId") Long memberId);
+                                @Param("memberId") Long memberId,
+                                @Param("customerName") String customerName,
+                                @Param("customerPhone") String customerPhone);
+
+    /**
+     * 按当前筛选导出（上限 exportLimit）
+     */
+    List<OrderVO> selectExportList(@Param("orderNo") String orderNo,
+                                   @Param("payType") Integer payType,
+                                   @Param("status") Integer status,
+                                   @Param("startDate") String startDate,
+                                   @Param("endDate") String endDate,
+                                   @Param("memberId") Long memberId,
+                                   @Param("customerName") String customerName,
+                                   @Param("customerPhone") String customerPhone,
+                                   @Param("exportLimit") int exportLimit);
 }

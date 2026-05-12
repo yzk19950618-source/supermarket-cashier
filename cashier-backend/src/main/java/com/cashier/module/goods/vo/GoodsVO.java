@@ -43,10 +43,10 @@ public class GoodsVO {
     @Schema(description = "零售价")
     private BigDecimal sellingPrice;
 
-    @Schema(description = "库存数量")
+    @Schema(description = "库存数量（整数袋）")
     private Integer stock;
 
-    @Schema(description = "库存预警值")
+    @Schema(description = "库存预警值（整数）")
     private Integer stockWarning;
 
     @Schema(description = "商品图片URL")
@@ -54,6 +54,15 @@ public class GoodsVO {
 
     @Schema(description = "状态")
     private Integer status;
+
+    @Schema(description = "同款买赠：1 启用")
+    private Integer promoEnabled;
+
+    @Schema(description = "满多少袋触发（整数）")
+    private Integer promoBuyQty;
+
+    @Schema(description = "送多少同款（可小数袋）")
+    private BigDecimal promoGiftQty;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

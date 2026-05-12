@@ -17,11 +17,18 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 订单管理控制器
@@ -51,6 +58,26 @@ public class OrderController {
     @PostMapping("/page")
     public R<IPage<OrderVO>> page(@RequestBody OrderQueryDTO queryDTO) {
         return R.ok(orderService.pageList(queryDTO));
+    }
+
+    @Operation(summary = "按筛选条件导出订单行（最多 2 万条，与 Excel 导出数据一致）")
+    @PostMapping("/export/rows")
+    public R<List<OrderVO>> exportRows(@RequestBody OrderQueryDTO queryDTO) {
+        return R.ok(orderService.exportRows(queryDTO));
+    }
+
+    @Operation(summary = "按筛选条件导出订单 Excel")
+    @PostMapping("/export/excel")
+    public ResponseEntity<byte[]> exportExcel(@RequestBody OrderQueryDTO queryDTO) {
+        byte[] body = orderService.exportOrdersExcel(queryDTO);
+        String filename = "订单导出_" + LocalDate.now() + ".xlsx";
+        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.set(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + filename + "\"; filename*=UTF-8''" + encoded);
+        return ResponseEntity.ok().headers(headers).body(body);
     }
 
     @Operation(summary = "查询订单详情")

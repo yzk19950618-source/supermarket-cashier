@@ -10,6 +10,8 @@ import com.cashier.module.order.vo.OrderDetailVO;
 import com.cashier.module.order.vo.OrderVO;
 import com.cashier.module.order.vo.TodaySummaryVO;
 
+import java.util.List;
+
 public interface OrderService {
 
     /**
@@ -25,6 +27,16 @@ public interface OrderService {
      * 分页查询订单
      */
     IPage<OrderVO> pageList(OrderQueryDTO queryDTO);
+
+    /**
+     * 按与分页相同的筛选条件导出（最多 2 万条），用于 Excel / 图片渲染
+     */
+    List<OrderVO> exportRows(OrderQueryDTO queryDTO);
+
+    /**
+     * 按筛选条件导出订单 Excel
+     */
+    byte[] exportOrdersExcel(OrderQueryDTO queryDTO);
 
     /**
      * 查询订单详情

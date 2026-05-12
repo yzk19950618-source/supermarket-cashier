@@ -90,7 +90,7 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         member.setGender(dto.getGender() != null ? dto.getGender() : 0);
         member.setAddress(StrUtil.blankToDefault(dto.getAddress(), null));
         member.setRemark(truncateMemberRemark(StrUtil.blankToDefault(dto.getRemark(), null)));
-        member.setDiscount(dto.getDiscount());
+        member.setDiscount(BigDecimal.ONE);
         member.setStatus(1);
         save(member);
     }
@@ -124,7 +124,7 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
         member.setGender(dto.getGender());
         member.setAddress(StrUtil.blankToDefault(dto.getAddress(), null));
         member.setRemark(truncateMemberRemark(StrUtil.blankToDefault(dto.getRemark(), null)));
-        member.setDiscount(dto.getDiscount());
+        member.setDiscount(BigDecimal.ONE);
         updateById(member);
     }
 

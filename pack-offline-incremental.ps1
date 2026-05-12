@@ -33,25 +33,23 @@ Pop-Location
 $backendDir = Join-Path $Stage 'backend'
 $feDist = Join-Path $Stage 'frontend\dist'
 $dbInc = Join-Path $Stage 'db\incremental'
-$scriptsInit = Join-Path $Stage 'scripts\init'
 New-Item -ItemType Directory -Path $backendDir -Force | Out-Null
 New-Item -ItemType Directory -Path $feDist -Force | Out-Null
 New-Item -ItemType Directory -Path $dbInc -Force | Out-Null
-New-Item -ItemType Directory -Path $scriptsInit -Force | Out-Null
 
 Copy-Item -Path $jar -Destination (Join-Path $backendDir 'cashier-backend.jar') -Force
 Copy-Item -Path (Join-Path $RepoRoot 'cashier-frontend\dist\*') -Destination $feDist -Recurse -Force
 
 $incSrc = Join-Path $RepoRoot 'cashier-backend\src\main\resources\db\incremental'
-Copy-Item -Path (Join-Path $incSrc '*.sql') -Destination $dbInc -Force
+$runAllSql = Join-Path $incSrc 'run_all_incremental.sql'
+if (-not (Test-Path $runAllSql)) { Write-Error "Missing: $runAllSql"; exit 1 }
+Copy-Item -Path $runAllSql -Destination $dbInc -Force
 Copy-Item -Path (Join-Path $incSrc 'README.md') -Destination $dbInc -ErrorAction SilentlyContinue
 
 $dbsql = Join-Path $Stage 'dbsql'
 New-Item -ItemType Directory -Path $dbsql -Force | Out-Null
-Copy-Item -Path (Join-Path $incSrc '*.sql') -Destination $dbsql -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\dbsql\run-incremental.bat') -Destination $dbsql -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\dbsql\README.txt') -Destination $dbsql -Force
-Copy-Item -Path (Join-Path $incSrc 'README.md') -Destination $dbsql -ErrorAction SilentlyContinue
 
 $scriptsRuntime = Join-Path $Stage 'scripts\runtime'
 New-Item -ItemType Directory -Path $scriptsRuntime -Force | Out-Null
@@ -59,8 +57,6 @@ Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\runtime\start.bat') 
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\runtime\stop.bat') -Destination (Join-Path $scriptsRuntime 'stop.bat') -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\runtime\db-local.bat.example') -Destination (Join-Path $scriptsRuntime 'db-local.bat.example') -Force
 
-Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\init-db.bat') -Destination (Join-Path $scriptsInit 'init-db.bat') -Force
-Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\init-region.bat') -Destination (Join-Path $scriptsInit 'init-region.bat') -Force
 Copy-Item -Path (Join-Path $RepoRoot 'scripts\offline-win64\PATCH-README.txt') -Destination (Join-Path $Stage 'PATCH-README.txt') -Force
 
 $ZipTmp = Join-Path $OutDir 'offline-incremental-pack.tmp.zip'

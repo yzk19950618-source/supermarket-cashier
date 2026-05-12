@@ -38,9 +38,6 @@ public class MemberVO {
     @Schema(description = "积分")
     private Integer points;
 
-    @Schema(description = "折扣")
-    private BigDecimal discount;
-
     @Schema(description = "状态")
     private Integer status;
 

@@ -114,6 +114,8 @@ Supermarket-Cashier-System/
 mysql -u root -p < cashier-backend/src/main/resources/db/init.sql
 ```
 
+已有库增量（幂等，可重复执行）：`cashier-backend/src/main/resources/db/incremental/run_all_incremental.sql`。仅打包该 SQL + 离线执行 bat：`powershell -NoProfile -File scripts/pack-db-incremental.ps1`，输出 `dist/supermarket-cashier-db-incremental.zip`。
+
 2. 修改数据库配置
 
 编辑 `cashier-backend/src/main/resources/application-dev.yml`，修改数据库连接信息：

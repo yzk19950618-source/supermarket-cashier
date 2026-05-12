@@ -4,8 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-import java.math.BigDecimal;
-
 @Data
 @Schema(description = "会员信息")
 public class MemberDTO {
@@ -25,9 +23,6 @@ public class MemberDTO {
 
     @Schema(description = "性别：0-未知 1-男 2-女")
     private Integer gender = 0;
-
-    @Schema(description = "折扣")
-    private BigDecimal discount = BigDecimal.ONE;
 
     @Schema(description = "地址")
     private String address;

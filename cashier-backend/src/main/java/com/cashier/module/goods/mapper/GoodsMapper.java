@@ -9,6 +9,9 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 /**
  * 商品 Mapper 接口
  *
@@ -32,6 +35,11 @@ public interface GoodsMapper extends BaseMapper<Goods> {
                                 @Param("categoryId") Long categoryId,
                                 @Param("status") Integer status);
 
+    List<GoodsVO> selectExportList(@Param("name") String name,
+                                   @Param("categoryId") Long categoryId,
+                                   @Param("status") Integer status,
+                                   @Param("exportLimit") int exportLimit);
+
     /**
      * 扣减库存（乐观锁）
      *
@@ -40,7 +48,7 @@ public interface GoodsMapper extends BaseMapper<Goods> {
      * @return 影响行数（0表示库存不足）
      */
     @Update("UPDATE goods SET stock = stock - #{quantity} WHERE id = #{goodsId} AND stock >= #{quantity} AND deleted = 0")
-    int deductStock(@Param("goodsId") Long goodsId, @Param("quantity") Integer quantity);
+    int deductStock(@Param("goodsId") Long goodsId, @Param("quantity") BigDecimal quantity);
 
     /**
      * 增加库存
@@ -49,5 +57,5 @@ public interface GoodsMapper extends BaseMapper<Goods> {
      * @param quantity 增加数量
      */
     @Update("UPDATE goods SET stock = stock + #{quantity} WHERE id = #{goodsId} AND deleted = 0")
-    int addStock(@Param("goodsId") Long goodsId, @Param("quantity") Integer quantity);
+    int addStock(@Param("goodsId") Long goodsId, @Param("quantity") BigDecimal quantity);
 }

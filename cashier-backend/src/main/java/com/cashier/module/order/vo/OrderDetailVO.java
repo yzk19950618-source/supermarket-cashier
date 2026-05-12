@@ -53,11 +53,14 @@ public class OrderDetailVO extends OrderVO {
         @Schema(description = "销售单价")
         private BigDecimal sellingPrice;
 
-        @Schema(description = "购买数量")
-        private Integer quantity;
+        @Schema(description = "购买数量（可小数）")
+        private BigDecimal quantity;
 
         @Schema(description = "小计金额")
         private BigDecimal subtotal;
+
+        @Schema(description = "1=活动赠品")
+        private Integer isGift;
     }
 
     /**

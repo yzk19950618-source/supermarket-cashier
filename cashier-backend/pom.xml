@@ -82,6 +82,26 @@
             <version>${hutool.version}</version>
         </dependency>
 
+        <!-- Excel（Hutool ExcelUtil 依赖 POI） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
+        <!-- 上传图片压缩（拍照大图缩边 + JPEG；含 EXIF 方向） -->
+        <dependency>
+            <groupId>net.coobird</groupId>
+            <artifactId>thumbnailator</artifactId>
+            <version>0.4.20</version>
+        </dependency>
+        <!-- JDK 自带 ImageIO 不读 WebP；拍照/浏览器常出 WebP -->
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-webp</artifactId>
+            <version>3.11.0</version>
+        </dependency>
+
         <!-- 本地缓存（省市区 + 商品分页） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

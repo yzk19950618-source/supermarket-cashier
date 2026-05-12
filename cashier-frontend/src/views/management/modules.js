@@ -84,6 +84,31 @@ export const MODULES = {
         precision: 0,
       },
       { key: 'image', label: '商品图片', type: 'file' },
+      {
+        key: 'promoEnabled',
+        label: '同款买满送',
+        type: 'select',
+        options: [
+          { label: '关闭', value: 0 },
+          { label: '启用', value: 1 },
+        ],
+      },
+      {
+        key: 'promoBuyQty',
+        label: '买满件数',
+        type: 'number',
+        showStepper: true,
+        step: 1,
+        precision: 0,
+      },
+      {
+        key: 'promoGiftQty',
+        label: '赠送数量',
+        type: 'number',
+        showStepper: true,
+        step: 0.1,
+        precision: 3,
+      },
     ],
     createForm() {
       return {
@@ -95,6 +120,9 @@ export const MODULES = {
         stock: 0,
         stockWarning: 10,
         image: '',
+        promoEnabled: 0,
+        promoBuyQty: null,
+        promoGiftQty: null,
       }
     },
     columns: [
@@ -104,6 +132,11 @@ export const MODULES = {
       { title: '零售价', key: 'sellingPrice', format: 'money' },
       { title: '库存', key: 'stock' },
       { title: '预警值', key: 'stockWarning' },
+      {
+        title: '买赠',
+        key: 'promoEnabled',
+        format: 'promoBuyGift',
+      },
       { title: '图片', key: 'image', format: 'image' },
       { title: '状态', key: 'status', format: 'statusTag' },
     ],
@@ -149,10 +182,9 @@ export const MODULES = {
       { key: 'gender', label: '性别', type: 'select', options: genderOpts },
       { key: 'address', label: '地址', type: 'input' },
       { key: 'remark', label: '备注', type: 'textarea', rows: 8, maxRows: 20, maxlength: 2000 },
-      { key: 'discount', label: '折扣', type: 'number' },
     ],
     createForm() {
-      return { name: '', phone: '', gender: 0, address: '', remark: '', discount: 1 }
+      return { name: '', phone: '', gender: 0, address: '', remark: '' }
     },
     columns: [
       { title: '姓名', key: 'name', width: 100, ellipsis: { tooltip: true } },
@@ -174,18 +206,19 @@ export const MODULES = {
     title: '订单管理',
     pageEndpoint: '/order/page',
     detailEndpoint: '/order/detail',
-    orderClientFilter: true,
     extraActions: ['detail', 'refund', 'editOrder'],
     filters: [
       { key: 'orderNo', label: '订单号', type: 'input' },
       { key: 'memberId', hidden: true },
-      { key: 'customerName', label: '客户姓名', type: 'input', clientOnly: true },
-      { key: 'customerPhone', label: '客户电话', type: 'input', clientOnly: true },
+      { key: 'customerName', label: '客户姓名', type: 'input' },
+      { key: 'customerPhone', label: '客户电话', type: 'input' },
       { key: 'status', label: '状态', type: 'select', options: orderStatusOpts },
     ],
     columns: [
       { title: '客户', key: 'customerName', format: 'orderCustomerName' },
-      { title: '订单日期', key: 'orderDate', format: 'orderDate', width: 112 },
+      { title: '订单日期', key: 'orderDate', format: 'dateTime', width: 168 },
+      { title: '下单时间', key: 'createTime', format: 'dateTime', width: 168 },
+      { title: '支付时间', key: 'paidTime', format: 'dateTime', width: 168 },
       { title: '总金额', key: 'totalAmount', format: 'money' },
       { title: '欠款金额', key: '_debt', format: 'orderDebt' },
       { title: '状态', key: '_st', format: 'orderUiStatus' },

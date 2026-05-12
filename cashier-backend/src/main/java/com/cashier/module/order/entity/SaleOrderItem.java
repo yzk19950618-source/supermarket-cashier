@@ -39,11 +39,14 @@ public class SaleOrderItem {
     /** 销售单价 */
     private BigDecimal sellingPrice;
 
-    /** 购买数量 */
-    private Integer quantity;
+    /** 购买数量（可小数） */
+    private BigDecimal quantity;
 
     /** 小计金额 */
     private BigDecimal subtotal;
+
+    /** 1=活动赠品（同款买赠） */
+    private Integer isGift;
 
     /** 创建时间 */
     private LocalDateTime createTime;

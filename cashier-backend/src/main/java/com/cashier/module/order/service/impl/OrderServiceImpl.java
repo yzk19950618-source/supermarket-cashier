@@ -76,18 +76,7 @@ public class OrderServiceImpl implements OrderService {
     private final SaleOrderAttachmentMapper saleOrderAttachmentMapper;
 
     /**
-     * 🔥 收银结算（核心业务方法）
-     *
-     * 处理流程：
-     * 1. 校验商品（存在性、上架状态、库存）
-     * 2. 查询会员信息（如有），获取折扣
-     * 3. 计算订单金额
-     * 4. 生成订单编号
-     * 5. 创建订单主表 + 明细表
-     * 6. 扣减库存（乐观锁防超卖）
-     * 7. 会员余额支付时扣减余额
-     * 8. 累加会员积分
-     * 9. 返回订单信息
+     * 收银结算：校验库存（含同款赠品）、约定应收写入 discount_amount、可选同款买满送。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -98,45 +87,75 @@ public class OrderServiceImpl implements OrderService {
             dto.setPayType(CommonConstant.PAY_TYPE_CASH);
         }
 
-        // ===== 1. 校验商品并计算金额 =====
         List<SaleOrderItem> orderItems = new ArrayList<>();
+        Map<Long, BigDecimal> stockDeduct = new HashMap<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         Map<Long, String> categoryNameCache = new HashMap<>();
 
         for (SettleItemDTO item : dto.getItems()) {
-            // 查询商品
             Goods goods = goodsMapper.selectById(item.getGoodsId());
             if (goods == null || goods.getDeleted() == 1) {
                 throw new BusinessException(ResultCode.DATA_NOT_FOUND.getCode(),
                         "商品不存在（ID: " + item.getGoodsId() + "）");
             }
-            // 检查上架状态
             if (goods.getStatus() != CommonConstant.STATUS_ENABLED) {
                 throw new BusinessException(ResultCode.GOODS_OFF_SHELF.getCode(),
                         "商品「" + goods.getName() + "」已下架");
             }
-            // 检查库存
-            if (goods.getStock() < item.getQuantity()) {
-                throw new BusinessException(ResultCode.STOCK_NOT_ENOUGH.getCode(),
-                        "商品「" + goods.getName() + "」库存不足，当前库存：" + goods.getStock());
+
+            if (Boolean.TRUE.equals(item.getPromoEnabled())) {
+                if (goods.getPromoEnabled() == null || goods.getPromoEnabled() == 0) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
+                            "商品「" + goods.getName() + "」未在后台开启同款买满送，无法参与");
+                }
+                boolean hasDefaults = positiveInteger(goods.getPromoBuyQty()) && positiveQty(goods.getPromoGiftQty());
+                if (!hasDefaults && (!positiveInteger(item.getPromoBuyQty()) || !positiveQty(item.getPromoGiftQty()))) {
+                    throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
+                            "商品「" + goods.getName() + "」未配置默认买满/赠送件数，请在收银台填写买满件数与赠送数量");
+                }
             }
 
-            // 计算小计
+            BigDecimal giftQty = computeGiftQuantity(item, goods);
+            int paidQty = item.getQuantity();
+            BigDecimal paidBd = BigDecimal.valueOf(paidQty);
+            BigDecimal needStock = paidBd.add(giftQty);
+            BigDecimal stockOnHand = goods.getStock() != null ? goods.getStock() : BigDecimal.ZERO;
+            if (stockOnHand.compareTo(needStock) < 0) {
+                throw new BusinessException(ResultCode.STOCK_NOT_ENOUGH.getCode(),
+                        "商品「" + goods.getName() + "」库存不足（含活动赠品），需要：" + needStock.stripTrailingZeros().toPlainString()
+                                + "，当前库存：" + stockOnHand.stripTrailingZeros().toPlainString());
+            }
+
             BigDecimal subtotal = goods.getSellingPrice()
-                    .multiply(BigDecimal.valueOf(item.getQuantity()))
+                    .multiply(paidBd)
                     .setScale(2, RoundingMode.HALF_UP);
             totalAmount = totalAmount.add(subtotal);
 
-            // 构建明细对象
-            SaleOrderItem orderItem = new SaleOrderItem();
-            orderItem.setGoodsId(goods.getId());
-            orderItem.setGoodsName(goods.getName());
-            orderItem.setBarcode(goods.getBarcode());
-            orderItem.setCategoryName(resolveCategoryName(goods.getCategoryId(), categoryNameCache));
-            orderItem.setSellingPrice(goods.getSellingPrice());
-            orderItem.setQuantity(item.getQuantity());
-            orderItem.setSubtotal(subtotal);
-            orderItems.add(orderItem);
+            SaleOrderItem paidLine = new SaleOrderItem();
+            paidLine.setGoodsId(goods.getId());
+            paidLine.setGoodsName(goods.getName());
+            paidLine.setBarcode(goods.getBarcode());
+            paidLine.setCategoryName(resolveCategoryName(goods.getCategoryId(), categoryNameCache));
+            paidLine.setSellingPrice(goods.getSellingPrice());
+            paidLine.setQuantity(paidBd);
+            paidLine.setSubtotal(subtotal);
+            paidLine.setIsGift(0);
+            orderItems.add(paidLine);
+
+            stockDeduct.merge(goods.getId(), needStock, BigDecimal::add);
+
+            if (giftQty.compareTo(BigDecimal.ZERO) > 0) {
+                SaleOrderItem giftLine = new SaleOrderItem();
+                giftLine.setGoodsId(goods.getId());
+                giftLine.setGoodsName(goods.getName());
+                giftLine.setBarcode(goods.getBarcode());
+                giftLine.setCategoryName(resolveCategoryName(goods.getCategoryId(), categoryNameCache));
+                giftLine.setSellingPrice(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                giftLine.setQuantity(giftQty);
+                giftLine.setSubtotal(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                giftLine.setIsGift(1);
+                orderItems.add(giftLine);
+            }
         }
 
         String prefName = StrUtil.blankToDefault(dto.getCustomerName(), "").trim();
@@ -155,23 +174,27 @@ public class OrderServiceImpl implements OrderService {
 
         // ===== 2. 会员（卡号/手机；有客户姓名时可自动建档并关联订单）=====
         Member member = resolveMemberForSettle(dto, prefName, prefPhone, prefAddr, custGender);
-        BigDecimal discount = BigDecimal.ONE;
-        if (member != null && member.getDiscount() != null) {
-            discount = member.getDiscount();
-        }
 
-        // ===== 3. 计算金额 =====
-        BigDecimal discountAmount = totalAmount.multiply(BigDecimal.ONE.subtract(discount))
-                .setScale(2, RoundingMode.HALF_UP);
-        BigDecimal realAmount = totalAmount.subtract(discountAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+        // ===== 3. 约定应收 → discount_amount = 总额 − 应收 =====
+        BigDecimal receivable = dto.getReceivableAmount();
+        if (receivable == null) {
+            receivable = totalAmount;
+        }
+        receivable = receivable.setScale(2, RoundingMode.HALF_UP);
+        if (receivable.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException("约定应收不能为负");
+        }
+        if (receivable.compareTo(totalAmount) > 0) {
+            throw new BusinessException("约定应收不能大于商品总额");
+        }
+        BigDecimal discountAmount = totalAmount.subtract(receivable).setScale(2, RoundingMode.HALF_UP);
 
         // ===== 4. 会员余额支付校验 =====
         if (dto.getPayType() == CommonConstant.PAY_TYPE_BALANCE) {
             if (member == null) {
                 throw new BusinessException("会员余额支付需要先选择会员");
             }
-            if (member.getBalance().compareTo(realAmount) < 0) {
+            if (member.getBalance().compareTo(receivable) < 0) {
                 throw new BusinessException(ResultCode.MEMBER_BALANCE_NOT_ENOUGH);
             }
         }
@@ -189,7 +212,7 @@ public class OrderServiceImpl implements OrderService {
         boolean balanceInstantPay = dto.getPayType() != null
                 && dto.getPayType() == CommonConstant.PAY_TYPE_BALANCE;
         if (balanceInstantPay) {
-            order.setRealAmount(realAmount);
+            order.setRealAmount(receivable);
             order.setStatus(CommonConstant.ORDER_STATUS_PAID);
             order.setPaidTime(LocalDateTime.now());
         } else {
@@ -229,30 +252,29 @@ public class OrderServiceImpl implements OrderService {
         order.setOrderDate(orderDate != null ? orderDate : LocalDate.now());
         saleOrderMapper.insert(order);
 
-        // ===== 6. 创建订单明细 =====
+        // ===== 6. 创建订单明细（付费行 + 赠品行）=====
         for (SaleOrderItem item : orderItems) {
             item.setOrderId(order.getId());
             saleOrderItemMapper.insert(item);
         }
 
-        // ===== 7. 扣减库存（乐观锁防超卖） =====
-        for (SettleItemDTO item : dto.getItems()) {
-            int rows = goodsMapper.deductStock(item.getGoodsId(), item.getQuantity());
+        // ===== 7. 扣减库存（付费 + 赠品合并扣减）=====
+        for (Map.Entry<Long, BigDecimal> e : stockDeduct.entrySet()) {
+            int rows = goodsMapper.deductStock(e.getKey(), e.getValue());
             if (rows == 0) {
-                // 扣减失败说明库存不足，抛异常回滚事务
-                Goods goods = goodsMapper.selectById(item.getGoodsId());
+                Goods goods = goodsMapper.selectById(e.getKey());
                 throw new BusinessException(ResultCode.STOCK_NOT_ENOUGH.getCode(),
-                        "商品「" + (goods != null ? goods.getName() : item.getGoodsId()) + "」库存不足");
+                        "商品「" + (goods != null ? goods.getName() : e.getKey()) + "」库存不足");
             }
         }
 
         // ===== 8. 会员相关操作（仅余额当场结清时扣款、积分） =====
         if (member != null && balanceInstantPay) {
-            int rows = memberMapper.deductBalance(member.getId(), realAmount);
+            int rows = memberMapper.deductBalance(member.getId(), receivable);
             if (rows == 0) {
                 throw new BusinessException(ResultCode.MEMBER_BALANCE_NOT_ENOUGH);
             }
-            int addPoints = realAmount.intValue();
+            int addPoints = receivable.intValue();
             if (addPoints > 0) {
                 memberMapper.addPoints(member.getId(), addPoints);
             }
@@ -260,7 +282,7 @@ public class OrderServiceImpl implements OrderService {
 
         syncMemberProfileFromSettle(member, order);
 
-        log.info("结算成功，订单号：{}，应收(优惠后)：{}，状态：{}", order.getOrderNo(), realAmount, order.getStatus());
+        log.info("结算成功，订单号：{}，应收：{}，状态：{}", order.getOrderNo(), receivable, order.getStatus());
 
         // ===== 9. 构建返回结果 =====
         OrderVO vo = new OrderVO();
@@ -293,16 +315,118 @@ public class OrderServiceImpl implements OrderService {
     public IPage<OrderVO> pageList(OrderQueryDTO queryDTO) {
         Page<OrderVO> page = new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize());
         IPage<OrderVO> out = saleOrderMapper.selectPageVO(page,
-                queryDTO.getOrderNo(),
+                StrUtil.trimToNull(queryDTO.getOrderNo()),
                 queryDTO.getPayType(),
                 queryDTO.getStatus(),
-                queryDTO.getStartDate(),
-                queryDTO.getEndDate(),
-                queryDTO.getMemberId());
+                StrUtil.trimToNull(queryDTO.getStartDate()),
+                StrUtil.trimToNull(queryDTO.getEndDate()),
+                queryDTO.getMemberId(),
+                StrUtil.trimToNull(queryDTO.getCustomerName()),
+                StrUtil.trimToNull(queryDTO.getCustomerPhone()));
         for (OrderVO row : out.getRecords()) {
             fillDebtSummary(row, row.getStatus());
         }
         return out;
+    }
+
+    private static final int ORDER_EXPORT_MAX = 20000;
+
+    @Override
+    public List<OrderVO> exportRows(OrderQueryDTO queryDTO) {
+        List<OrderVO> rows = saleOrderMapper.selectExportList(
+                StrUtil.trimToNull(queryDTO.getOrderNo()),
+                queryDTO.getPayType(),
+                queryDTO.getStatus(),
+                StrUtil.trimToNull(queryDTO.getStartDate()),
+                StrUtil.trimToNull(queryDTO.getEndDate()),
+                queryDTO.getMemberId(),
+                StrUtil.trimToNull(queryDTO.getCustomerName()),
+                StrUtil.trimToNull(queryDTO.getCustomerPhone()),
+                ORDER_EXPORT_MAX);
+        for (OrderVO row : rows) {
+            fillDebtSummary(row, row.getStatus());
+        }
+        return rows;
+    }
+
+    @Override
+    public byte[] exportOrdersExcel(OrderQueryDTO queryDTO) {
+        List<OrderVO> rows = exportRows(queryDTO);
+        List<List<Object>> data = new ArrayList<>();
+        data.add(List.of(
+                "订单号", "客户姓名", "会员名", "客户电话", "订单日期", "创建时间", "支付时间",
+                "总金额", "优惠金额", "累计已收", "应收", "剩余欠款", "状态", "支付方式", "还款日", "送货日",
+                "收货地址", "收银员", "备注"));
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        for (OrderVO r : rows) {
+            data.add(List.of(
+                    r.getOrderNo(),
+                    nz(r.getCustomerName()),
+                    nz(r.getMemberName()),
+                    nz(r.getCustomerPhone()),
+                    r.getOrderDate() != null ? r.getOrderDate().toString() : "",
+                    r.getCreateTime() != null ? dtf.format(r.getCreateTime()) : "",
+                    r.getPaidTime() != null ? dtf.format(r.getPaidTime()) : "",
+                    dec(r.getTotalAmount()),
+                    dec(r.getDiscountAmount()),
+                    dec(r.getPaidAmount()),
+                    dec(r.getReceivableAmount()),
+                    dec(r.getRemainDebt()),
+                    orderStatusLabel(r.getStatus()),
+                    payTypeLabel(r.getPayType()),
+                    r.getRepayDate() != null ? r.getRepayDate().toString() : "",
+                    r.getDeliveryDate() != null ? r.getDeliveryDate().toString() : "",
+                    nz(r.getCustomerAddress()),
+                    nz(r.getUserName()),
+                    nz(r.getRemark())));
+        }
+        cn.hutool.poi.excel.ExcelWriter writer = cn.hutool.poi.excel.ExcelUtil.getWriter(true);
+        writer.write(data, true);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        writer.flush(out);
+        writer.close();
+        return out.toByteArray();
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
+
+    private static String dec(BigDecimal v) {
+        if (v == null) {
+            return "";
+        }
+        return v.setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private static String orderStatusLabel(Integer s) {
+        if (s == null) {
+            return "";
+        }
+        if (s == CommonConstant.ORDER_STATUS_REFUNDED) {
+            return "已退款";
+        }
+        if (s == CommonConstant.ORDER_STATUS_PAID) {
+            return "已支付";
+        }
+        if (s == CommonConstant.ORDER_STATUS_UNPAID) {
+            return "未支付";
+        }
+        return String.valueOf(s);
+    }
+
+    private static String payTypeLabel(Integer p) {
+        if (p == null) {
+            return "";
+        }
+        return switch (p) {
+            case CommonConstant.PAY_TYPE_CASH -> "现金";
+            case CommonConstant.PAY_TYPE_WECHAT -> "微信";
+            case CommonConstant.PAY_TYPE_ALIPAY -> "支付宝";
+            case CommonConstant.PAY_TYPE_BALANCE -> "会员余额";
+            case CommonConstant.PAY_TYPE_BANK -> "银行卡";
+            default -> String.valueOf(p);
+        };
     }
 
     @Override
@@ -584,7 +708,10 @@ public class OrderServiceImpl implements OrderService {
 
         // 3. 恢复库存
         for (SaleOrderItem item : items) {
-            goodsMapper.addStock(item.getGoodsId(), item.getQuantity());
+            BigDecimal q = item.getQuantity();
+            if (q != null && q.compareTo(BigDecimal.ZERO) > 0) {
+                goodsMapper.addStock(item.getGoodsId(), q);
+            }
         }
 
         // 4. 会员相关退款操作
@@ -846,6 +973,36 @@ public class OrderServiceImpl implements OrderService {
             }
         }
         return "";
+    }
+
+    /** 同款买满送：每满 buy 单位付费品送 gift 单位同款（可小数；赠品不占小计、扣库存）。需商品后台开启且本行勾选参与。 */
+    private static boolean positiveInteger(Integer n) {
+        return n != null && n > 0;
+    }
+
+    private static boolean positiveQty(BigDecimal b) {
+        return b != null && b.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private static BigDecimal computeGiftQuantity(SettleItemDTO item, Goods goods) {
+        if (!Boolean.TRUE.equals(item.getPromoEnabled())) {
+            return BigDecimal.ZERO;
+        }
+        if (goods.getPromoEnabled() == null || goods.getPromoEnabled() == 0) {
+            return BigDecimal.ZERO;
+        }
+        Integer buy = positiveInteger(item.getPromoBuyQty())
+                ? item.getPromoBuyQty()
+                : (positiveInteger(goods.getPromoBuyQty()) ? goods.getPromoBuyQty() : null);
+        BigDecimal gift = positiveQty(item.getPromoGiftQty())
+                ? item.getPromoGiftQty()
+                : (positiveQty(goods.getPromoGiftQty()) ? goods.getPromoGiftQty() : null);
+        if (buy == null || gift == null) {
+            return BigDecimal.ZERO;
+        }
+        int paid = item.getQuantity();
+        int tiers = paid / buy;
+        return BigDecimal.valueOf(tiers).multiply(gift).setScale(3, RoundingMode.HALF_UP);
     }
 
     /** 订单应收（优惠后）= 商品总额 − 优惠金额；还款累计到此金额即视为结清 */

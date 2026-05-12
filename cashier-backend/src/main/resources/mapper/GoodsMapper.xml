@@ -21,6 +21,9 @@
             g.stock_warning AS stockWarning,
             g.image,
             g.status,
+            g.promo_enabled AS promoEnabled,
+            g.promo_buy_qty AS promoBuyQty,
+            g.promo_gift_qty AS promoGiftQty,
             g.create_time AS createTime
         FROM goods g
         LEFT JOIN goods_category gc ON g.category_id = gc.id AND gc.deleted = 0
@@ -38,6 +41,44 @@
             AND g.status = #{status}
         </if>
         ORDER BY g.create_time DESC
+    </select>
+
+    <select id="selectExportList" resultType="com.cashier.module.goods.vo.GoodsVO">
+        SELECT
+            g.id,
+            g.barcode,
+            g.name,
+            g.name_initial AS nameInitial,
+            g.category_id AS categoryId,
+            gc.name AS categoryName,
+            g.unit,
+            g.purchase_price AS purchasePrice,
+            g.selling_price AS sellingPrice,
+            g.stock,
+            g.stock_warning AS stockWarning,
+            g.image,
+            g.status,
+            g.promo_enabled AS promoEnabled,
+            g.promo_buy_qty AS promoBuyQty,
+            g.promo_gift_qty AS promoGiftQty,
+            g.create_time AS createTime
+        FROM goods g
+        LEFT JOIN goods_category gc ON g.category_id = gc.id AND gc.deleted = 0
+        WHERE g.deleted = 0
+        <if test="name != null and name != ''">
+            AND (
+                g.name LIKE CONCAT('%', #{name}, '%')
+                OR IFNULL(g.name_initial, '') LIKE CONCAT('%', #{name}, '%')
+            )
+        </if>
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+        <if test="status != null">
+            AND g.status = #{status}
+        </if>
+        ORDER BY g.create_time DESC
+        LIMIT #{exportLimit}
     </select>
 
 </mapper>

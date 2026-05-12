@@ -1,10 +1,11 @@
 <script setup>
-import { computed, h, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NButton, NImage, NSpace, NTag, NText, useMessage } from 'naive-ui'
 import { MODULES, genderOpts, labelOf, money, payTypeOpts, roleOpts, statusOpts } from './management/modules'
-import { post, uploadFile } from '@/utils/request'
+import { post, uploadFile, postBlob, filenameFromContentDisposition, triggerDownloadBlob } from '@/utils/request'
 import { resolveMediaUrl } from '@/utils/mediaUrl'
+import { formatDateTime } from '@/utils/dateFormat'
 import { useCashierCacheStore } from '@/stores/cashierCache'
 
 const route = useRoute()
@@ -59,8 +60,10 @@ const rows = ref([])
 const page = reactive({ pageNum: 1, pageSize: 10, total: 0 })
 const filters = reactive({})
 
-/** 订单/会员：部分筛选在前端对单次拉取结果分页 */
-const listClientCache = ref(null)
+const goodsImportFileRef = ref(null)
+const orderListImageExportRef = ref(null)
+const orderExportImageRows = ref([])
+const MAX_ORDER_IMAGE_ROWS = 120
 
 const options = reactive({
   categoryOptions: [],
@@ -73,6 +76,61 @@ const form = reactive({})
 
 const detailOpen = ref(false)
 const detail = ref(null)
+const orderImageExportRef = ref(null)
+
+const orderDetailItemColumns = [
+  {
+    title: '类型',
+    key: 'isGift',
+    width: 72,
+    render(r) {
+      return r.isGift === 1
+        ? h(NTag, { size: 'small', type: 'success' }, { default: () => '赠送' })
+        : '购买'
+    },
+  },
+  { title: '商品名称', key: 'goodsName' },
+  {
+    title: '品类',
+    key: 'categoryName',
+    render: (r) => r.categoryName || '-',
+  },
+  { title: '单价', key: 'sellingPrice', render: (r) => money(r.sellingPrice) },
+  { title: '数量', key: 'quantity' },
+  {
+    title: '明细时间',
+    key: 'createTime',
+    width: 168,
+    render: (r) => formatDateTime(r.createTime),
+  },
+  { title: '小计', key: 'subtotal', render: (r) => money(r.subtotal) },
+]
+
+async function exportOrderImage() {
+  const el = orderImageExportRef.value
+  if (!el || !detail.value) return
+  const m = message.loading('正在生成图片…', { duration: 0 })
+  try {
+    const { default: html2canvas } = await import('html2canvas')
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+    })
+    const a = document.createElement('a')
+    a.href = canvas.toDataURL('image/png')
+    a.download = `order-${detail.value.orderNo || detail.value.id}.png`
+    a.click()
+    message.destroyAll()
+    message.success('图片已下载')
+  } catch (e) {
+    message.destroyAll()
+    message.error(e?.message || '生成失败')
+  } finally {
+    m?.destroy?.()
+  }
+}
 
 const rechargeOpen = ref(false)
 const rechargeTarget = ref(null)
@@ -163,7 +221,7 @@ const repaymentEditColumns = computed(() => [
   {
     title: '时间',
     key: 'createTime',
-    render: (row) => (row.createTime ? String(row.createTime).replace('T', ' ').slice(0, 19) : '-'),
+    render: (row) => formatDateTime(row.createTime),
   },
   {
     title: '操作',
@@ -192,7 +250,7 @@ const repaymentDetailColumns = computed(() => [
   {
     title: '还款时间',
     key: 'createTime',
-    render: (r) => (r.createTime ? String(r.createTime).replace('T', ' ').slice(0, 19) : '-'),
+    render: (r) => formatDateTime(r.createTime),
   },
   { title: '操作人', key: 'operatorName', ellipsis: true },
   {
@@ -300,7 +358,6 @@ function openRepaymentModal() {
 }
 
 function resetFilters() {
-  listClientCache.value = null
   Object.keys(filters).forEach((k) => delete filters[k])
   if (moduleConfig.value?.filters) {
     for (const f of moduleConfig.value.filters) {
@@ -335,14 +392,6 @@ function fieldOptions(f) {
   return f.options || []
 }
 
-function applyClientPagination() {
-  if (!listClientCache.value?.records) return
-  const records = listClientCache.value.records
-  page.total = records.length
-  const start = (page.pageNum - 1) * page.pageSize
-  rows.value = records.slice(start, start + page.pageSize)
-}
-
 function buildColumns() {
   const m = moduleConfig.value
   if (!m?.columns) return []
@@ -370,8 +419,8 @@ function buildColumns() {
           const name = row.customerName || row.memberName
           return name == null || name === '' ? '-' : String(name)
         }
-        if (c.format === 'orderDate') {
-          return formatDetailDate(row.orderDate ?? row.createTime)
+        if (c.format === 'dateTime') {
+          return formatDateTime(row[c.key])
         }
         if (c.format === 'orderDebt') {
           const debt =
@@ -414,10 +463,20 @@ function buildColumns() {
           )
         }
         if (c.format === 'placeholderDash') return '-'
+        if (c.format === 'promoBuyGift') {
+          const pb = Number(row.promoBuyQty)
+          const pg = Number(row.promoGiftQty)
+          return row.promoEnabled === 1 && pb > 0 && pg > 0 ? `满${row.promoBuyQty}送${row.promoGiftQty}`
+            : '-'
+        }
         if (c.format === 'image' && v) {
-          return h('img', {
+          return h(NImage, {
+            width: 40,
+            height: 40,
             src: resolveMediaUrl(v),
-            style: 'width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #ebeef5;',
+            objectFit: 'cover',
+            style: 'border-radius:4px;border:1px solid #ebeef5;',
+            previewDisabled: false,
           })
         }
         if (c.format === 'image') return '-'
@@ -532,36 +591,44 @@ async function loadOptions() {
   }
 }
 
+function buildListPayload({ forExport = false } = {}) {
+  const m = moduleConfig.value
+  if (!m) return {}
+  const payload = { ...filters }
+  for (const f of m.filters || []) {
+    if (f.clientOnly) delete payload[f.key]
+  }
+  for (const k of Object.keys(payload)) {
+    const v = payload[k]
+    if (v === '' || v === null || v === undefined) {
+      delete payload[k]
+      continue
+    }
+    if (k === 'customerName' || k === 'customerPhone') {
+      const t = String(v).trim()
+      if (t) payload[k] = t
+      else delete payload[k]
+    }
+  }
+  if ('status' in payload && (payload.status === null || payload.status === undefined)) {
+    delete payload.status
+  }
+  if ('memberId' in payload && (payload.memberId == null || payload.memberId === '')) {
+    delete payload.memberId
+  }
+  if (!m.noPagination && !forExport) {
+    payload.pageNum = page.pageNum
+    payload.pageSize = page.pageSize
+  }
+  return payload
+}
+
 async function fetchData() {
   const m = moduleConfig.value
   if (!m || m.placeholder) return
   loading.value = true
   try {
-    listClientCache.value = null
-    const payload = { ...filters }
-    for (const f of m.filters || []) {
-      if (f.clientOnly) delete payload[f.key]
-    }
-    if (!m.noPagination) {
-      payload.pageNum = page.pageNum
-      payload.pageSize = page.pageSize
-    }
-
-    if (
-      m.orderClientFilter &&
-      !filters.memberId &&
-      (filters.customerName?.trim() || filters.customerPhone?.trim())
-    ) {
-      payload.pageNum = 1
-      payload.pageSize = 500
-    }
-    if ('status' in payload && (payload.status === null || payload.status === undefined)) {
-      delete payload.status
-    }
-    if ('memberId' in payload && (payload.memberId == null || payload.memberId === '')) {
-      delete payload.memberId
-    }
-
+    const payload = buildListPayload({ forExport: false })
     const data = await post(m.pageEndpoint, payload)
     if (m.noPagination) {
       let list = Array.isArray(data) ? data : []
@@ -571,30 +638,7 @@ async function fetchData() {
       page.total = list.length
       return
     }
-
-    let records = data.records || []
-
-    if (route.meta.moduleKey === 'orders' && m.orderClientFilter && !filters.memberId) {
-      const cn = filters.customerName?.trim()
-      const cp = filters.customerPhone?.trim()
-      if (cn || cp) {
-        if (cn) {
-          records = records.filter((r) =>
-            `${r.memberName || ''}${r.customerName || ''}`.includes(cn),
-          )
-        }
-        if (cp) {
-          records = records.filter((r) => (r.remark || '').includes(cp))
-        }
-        listClientCache.value = { records }
-        page.total = records.length
-        page.pageNum = 1
-        applyClientPagination()
-        return
-      }
-    }
-
-    rows.value = records
+    rows.value = data.records || []
     page.total = data.total || 0
   } catch (e) {
     message.error(e.message || '数据加载失败')
@@ -603,17 +647,128 @@ async function fetchData() {
   }
 }
 
+async function downloadGoodsExcel() {
+  if (route.meta.moduleKey !== 'goods') return
+  try {
+    const payload = buildListPayload({ forExport: true })
+    const { blob, contentDisposition } = await postBlob('/goods/export/excel', payload)
+    const name = filenameFromContentDisposition(contentDisposition) || `商品导出_${Date.now()}.xlsx`
+    triggerDownloadBlob(blob, name)
+    message.success('已开始下载')
+  } catch (e) {
+    message.error(e.message || '导出失败')
+  }
+}
+
+async function downloadGoodsImportTemplate() {
+  try {
+    const { blob, contentDisposition } = await postBlob('/goods/import/template', {})
+    const name = filenameFromContentDisposition(contentDisposition) || `商品导入模板_${Date.now()}.xlsx`
+    triggerDownloadBlob(blob, name)
+    message.success('已开始下载')
+  } catch (e) {
+    message.error(e.message || '下载失败')
+  }
+}
+
+function triggerGoodsImportClick() {
+  goodsImportFileRef.value?.click()
+}
+
+async function onGoodsImportFile(ev) {
+  const f = ev.target?.files?.[0]
+  if (ev.target) ev.target.value = ''
+  if (!f) return
+  const loadingInst = message.loading('导入中…', { duration: 0 })
+  try {
+    const r = await uploadFile('/goods/import/batch', f)
+    message.destroyAll()
+    message.success(`导入完成：成功 ${r.success ?? 0} 条，失败 ${r.fail ?? 0} 条`)
+    if (r.errors?.length) {
+      message.warning(r.errors.slice(0, 8).join('\n'), { duration: 10000 })
+    }
+    await fetchData()
+    if (route.meta.moduleKey === 'goods') void cashierCache.refreshGoodsOnShelf()
+  } catch (e) {
+    message.destroyAll()
+    message.error(e.message || '导入失败')
+  } finally {
+    loadingInst?.destroy?.()
+  }
+}
+
+async function downloadOrdersExcel() {
+  if (route.meta.moduleKey !== 'orders') return
+  try {
+    const payload = buildListPayload({ forExport: true })
+    const { blob, contentDisposition } = await postBlob('/order/export/excel', payload)
+    const name = filenameFromContentDisposition(contentDisposition) || `订单导出_${Date.now()}.xlsx`
+    triggerDownloadBlob(blob, name)
+    message.success('已开始下载')
+  } catch (e) {
+    message.error(e.message || '导出失败')
+  }
+}
+
+function orderExportStatusLabel(row) {
+  const s = row?.status
+  if (s === 0) return '已退款'
+  if (s === 1) return '已支付'
+  if (s === 2) return '未支付'
+  return '-'
+}
+
+async function downloadOrdersListPng() {
+  if (route.meta.moduleKey !== 'orders') return
+  const payload = buildListPayload({ forExport: true })
+  const loadingCap = message.loading('生成图片中…', { duration: 0 })
+  try {
+    const list = await post('/order/export/rows', payload)
+    const full = Array.isArray(list) ? list : []
+    let slice = full
+    if (full.length > MAX_ORDER_IMAGE_ROWS) {
+      slice = full.slice(0, MAX_ORDER_IMAGE_ROWS)
+      message.info(`共 ${full.length} 条，图片仅包含前 ${MAX_ORDER_IMAGE_ROWS} 条；完整数据请用 Excel 导出。`)
+    }
+    orderExportImageRows.value = slice
+    await nextTick()
+    const el = orderListImageExportRef.value
+    if (!el) {
+      throw new Error('渲染区域未就绪')
+    }
+    const { default: html2canvas } = await import('html2canvas')
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight,
+    })
+    message.destroyAll()
+    const a = document.createElement('a')
+    a.href = canvas.toDataURL('image/png')
+    const tag = filters.memberId ? `member-${filters.memberId}` : 'list'
+    a.download = `订单列表_${tag}_${Date.now()}.png`
+    a.click()
+    message.success('图片已下载')
+  } catch (e) {
+    message.destroyAll()
+    message.error(e?.message || '导出失败')
+  } finally {
+    loadingCap?.destroy?.()
+  }
+}
+
 function onPageUpdate(p) {
   page.pageNum = p
-  if (listClientCache.value) applyClientPagination()
-  else fetchData()
+  fetchData()
 }
 
 function onPageSizeUpdate(ps) {
   page.pageSize = ps
   page.pageNum = 1
-  if (listClientCache.value) applyClientPagination()
-  else fetchData()
+  fetchData()
 }
 
 function openCreate() {
@@ -751,14 +906,6 @@ async function removeOrderAttachment(att, scope) {
   } catch (e) {
     message.error(e.message || '删除失败')
   }
-}
-
-function formatDetailDate(v) {
-  if (v == null || v === '') return '-'
-  const s = String(v)
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10)
-  return s
 }
 
 async function saveForm() {
@@ -917,11 +1064,11 @@ onMounted(loadOptions)
       </n-alert>
       <n-alert
         v-else-if="route.meta.moduleKey === 'orders' && (filters.customerName || filters.customerPhone)"
-        type="warning"
+        type="info"
         style="margin-bottom: 12px"
-        title="提示"
+        title="筛选说明"
       >
-        客户姓名/电话筛选在前端对单次拉取的数据过滤（最多 500 条）；生产环境建议后端扩展查询条件。
+        客户姓名、电话由后端模糊查询，与导出 Excel / 图片使用相同条件。
       </n-alert>
 
       <div v-if="visibleToolbarFilters.length" class="toolbar toolbar--labeled-two-row">
@@ -949,6 +1096,13 @@ onMounted(loadOptions)
             <n-button type="primary" @click="fetchData">查询</n-button>
             <n-button @click="onToolbarReset">重置</n-button>
             <n-button v-if="moduleConfig.addEndpoint" type="success" @click="openCreate">新增</n-button>
+            <n-button v-if="route.meta.moduleKey === 'goods'" @click="downloadGoodsExcel">导出 Excel</n-button>
+            <n-button v-if="route.meta.moduleKey === 'goods'" @click="downloadGoodsImportTemplate">
+              下载导入模板
+            </n-button>
+            <n-button v-if="route.meta.moduleKey === 'goods'" @click="triggerGoodsImportClick">批量导入</n-button>
+            <n-button v-if="route.meta.moduleKey === 'orders'" @click="downloadOrdersExcel">导出 Excel</n-button>
+            <n-button v-if="route.meta.moduleKey === 'orders'" @click="downloadOrdersListPng">导出列表图片</n-button>
           </n-space>
         </div>
       </div>
@@ -958,11 +1112,24 @@ onMounted(loadOptions)
             <n-button type="primary" @click="fetchData">查询</n-button>
             <n-button @click="onToolbarReset">重置</n-button>
             <n-button v-if="moduleConfig.addEndpoint" type="success" @click="openCreate">新增</n-button>
+            <n-button v-if="route.meta.moduleKey === 'goods'" @click="downloadGoodsExcel">导出 Excel</n-button>
+            <n-button v-if="route.meta.moduleKey === 'goods'" @click="downloadGoodsImportTemplate">
+              下载导入模板
+            </n-button>
+            <n-button v-if="route.meta.moduleKey === 'goods'" @click="triggerGoodsImportClick">批量导入</n-button>
+            <n-button v-if="route.meta.moduleKey === 'orders'" @click="downloadOrdersExcel">导出 Excel</n-button>
+            <n-button v-if="route.meta.moduleKey === 'orders'" @click="downloadOrdersListPng">导出列表图片</n-button>
           </n-space>
         </div>
       </div>
 
-      <n-data-table :columns="tableColumns" :data="rows" :loading="loading" size="small" striped />
+      <input
+        ref="goodsImportFileRef"
+        type="file"
+        accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        style="display: none"
+        @change="onGoodsImportFile"
+      />
 
       <div v-if="!moduleConfig.noPagination" class="table-footer">
         <n-pagination
@@ -976,6 +1143,38 @@ onMounted(loadOptions)
         />
       </div>
     </n-card>
+
+    <div ref="orderListImageExportRef" class="order-list-image-capture" aria-hidden="true">
+      <div class="order-list-image-capture__title">订单列表（与当前查询条件一致）</div>
+      <div v-if="filters.memberId" class="order-list-image-capture__hint">
+        客户筛选：memberId = {{ filters.memberId }}
+      </div>
+      <table v-if="orderExportImageRows.length" class="order-list-image-capture__table">
+        <thead>
+          <tr>
+            <th>订单号</th>
+            <th>客户</th>
+            <th>电话</th>
+            <th>下单时间</th>
+            <th>总金额</th>
+            <th>欠款</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(r, idx) in orderExportImageRows" :key="r.id ?? idx">
+            <td>{{ r.orderNo }}</td>
+            <td>{{ r.customerName || r.memberName || '-' }}</td>
+            <td>{{ r.customerPhone || '-' }}</td>
+            <td>{{ formatDateTime(r.createTime) }}</td>
+            <td>{{ money(r.totalAmount) }}</td>
+            <td>{{ money(orderSummaryRemain(r)) }}</td>
+            <td>{{ orderExportStatusLabel(r) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="order-list-image-capture__empty">（无数据）</div>
+    </div>
 
     <n-modal
       v-model:show="modalOpen"
@@ -1032,11 +1231,13 @@ onMounted(loadOptions)
               />
               <div v-else-if="ff.type === 'file'" style="width: 100%">
                 <input type="file" accept="image/*" @change="(e) => onImageField(e, ff.key)" />
-                <img
+                <n-image
                   v-if="form[ff.key]"
+                  width="80"
+                  height="80"
+                  object-fit="cover"
+                  style="margin-top: 8px; border-radius: 4px"
                   :src="resolveMediaUrl(form[ff.key])"
-                  alt=""
-                  style="margin-top: 8px; width: 80px; height: 80px; object-fit: cover; border-radius: 4px"
                 />
               </div>
             </n-form-item>
@@ -1232,50 +1433,68 @@ onMounted(loadOptions)
     <n-drawer v-model:show="detailOpen" :width="880" class="order-detail-drawer" :mask-closable="true">
       <n-drawer-content title="订单详情" closable>
         <template v-if="detail">
-          <div class="order-debt-summary-row order-debt-summary-row--drawer">
-            <div class="order-debt-summary-cell order-debt-summary-cell--due">
-              <div class="order-debt-summary-label">应收合计</div>
-              <div class="order-debt-summary-value">￥{{ orderSummaryReceivable(detail).toFixed(2) }}</div>
-            </div>
-            <div class="order-debt-summary-cell order-debt-summary-cell--paid">
-              <div class="order-debt-summary-label">已还</div>
-              <div class="order-debt-summary-value">￥{{ orderSummaryPaid(detail).toFixed(2) }}</div>
-            </div>
-            <div class="order-debt-summary-cell order-debt-summary-cell--remain">
-              <div class="order-debt-summary-label">剩余欠款</div>
-              <div class="order-debt-summary-value">￥{{ orderSummaryRemain(detail).toFixed(2) }}</div>
-            </div>
-          </div>
+          <n-space justify="end" style="margin-bottom: 12px">
+            <n-button type="primary" secondary size="small" @click="exportOrderImage">生成订单图片</n-button>
+          </n-space>
 
-          <n-card class="page-card order-detail-base-card" :bordered="false" title="订单基础信息">
-            <n-descriptions
-              bordered
-              size="small"
-              :column="2"
-              class="order-detail-descriptions"
-              :label-style="orderDescLabelStyle"
-              :content-style="orderDescContentStyle"
-            >
-              <n-descriptions-item label="订单号">{{ detail.orderNo }}</n-descriptions-item>
-              <n-descriptions-item label="客户">{{
-                detail.memberName || detail.customerName || detailRemarkParsed.customerLabel || '-'
-              }}</n-descriptions-item>
-              <n-descriptions-item label="电话">{{
-                detail.customerPhone || detailRemarkParsed.phone
-              }}</n-descriptions-item>
-              <n-descriptions-item label="地址">{{
-                detail.customerAddress || detailRemarkParsed.address
-              }}</n-descriptions-item>
-              <n-descriptions-item label="订单日期">{{ formatDetailDate(detail.orderDate || detail.createTime) }}</n-descriptions-item>
-              <n-descriptions-item label="还款日期">{{ formatDetailDate(detail.repayDate) }}</n-descriptions-item>
-              <n-descriptions-item label="送货日期">{{ formatDetailDate(detail.deliveryDate) }}</n-descriptions-item>
-              <n-descriptions-item label="支付方式">{{ labelOf(payTypeOpts, detail.payType) }}</n-descriptions-item>
-              <n-descriptions-item label="订单总额">{{ money(detail.totalAmount) }}</n-descriptions-item>
-              <n-descriptions-item label="优惠金额">{{ money(detail.discountAmount) }}</n-descriptions-item>
-              <n-descriptions-item label="累计实收（已还）">{{ money(orderSummaryPaid(detail)) }}</n-descriptions-item>
-              <n-descriptions-item label="备注">{{ detail.remark || '-' }}</n-descriptions-item>
-            </n-descriptions>
-          </n-card>
+          <div ref="orderImageExportRef" class="order-export-snapshot">
+            <div class="order-debt-summary-row order-debt-summary-row--drawer">
+              <div class="order-debt-summary-cell order-debt-summary-cell--due">
+                <div class="order-debt-summary-label">应收合计</div>
+                <div class="order-debt-summary-value">￥{{ orderSummaryReceivable(detail).toFixed(2) }}</div>
+              </div>
+              <div class="order-debt-summary-cell order-debt-summary-cell--paid">
+                <div class="order-debt-summary-label">已还</div>
+                <div class="order-debt-summary-value">￥{{ orderSummaryPaid(detail).toFixed(2) }}</div>
+              </div>
+              <div class="order-debt-summary-cell order-debt-summary-cell--remain">
+                <div class="order-debt-summary-label">剩余欠款</div>
+                <div class="order-debt-summary-value">￥{{ orderSummaryRemain(detail).toFixed(2) }}</div>
+              </div>
+            </div>
+            <n-card class="page-card order-detail-section-card" :bordered="false" title="商品明细">
+              <n-data-table
+                class="order-items-table"
+                size="small"
+                :pagination="false"
+                striped
+                :columns="orderDetailItemColumns"
+                :data="detail.items || []"
+              />
+            </n-card>
+
+            <n-card class="page-card order-detail-base-card" :bordered="false" title="订单基础信息">
+              <n-descriptions
+                bordered
+                size="small"
+                :column="2"
+                class="order-detail-descriptions"
+                :label-style="orderDescLabelStyle"
+                :content-style="orderDescContentStyle"
+              >
+                <n-descriptions-item label="订单号">{{ detail.orderNo }}</n-descriptions-item>
+                <n-descriptions-item label="客户">{{
+                  detail.memberName || detail.customerName || detailRemarkParsed.customerLabel || '-'
+                }}</n-descriptions-item>
+                <n-descriptions-item label="电话">{{
+                  detail.customerPhone || detailRemarkParsed.phone
+                }}</n-descriptions-item>
+                <n-descriptions-item label="地址">{{
+                  detail.customerAddress || detailRemarkParsed.address
+                }}</n-descriptions-item>
+                <n-descriptions-item label="订单日期">{{ formatDateTime(detail.orderDate || detail.createTime) }}</n-descriptions-item>
+                <n-descriptions-item label="还款日期">{{ formatDateTime(detail.repayDate) }}</n-descriptions-item>
+                <n-descriptions-item label="送货日期">{{ formatDateTime(detail.deliveryDate) }}</n-descriptions-item>
+                <n-descriptions-item label="支付方式">{{ labelOf(payTypeOpts, detail.payType) }}</n-descriptions-item>
+                <n-descriptions-item label="下单时间">{{ formatDateTime(detail.createTime) }}</n-descriptions-item>
+                <n-descriptions-item label="支付/核销时间">{{ formatDateTime(detail.paidTime) }}</n-descriptions-item>
+                <n-descriptions-item label="订单总额">{{ money(detail.totalAmount) }}</n-descriptions-item>
+                <n-descriptions-item label="减免金额">{{ money(detail.discountAmount) }}</n-descriptions-item>
+                <n-descriptions-item label="累计实收（已还）">{{ money(orderSummaryPaid(detail)) }}</n-descriptions-item>
+                <n-descriptions-item label="备注">{{ detail.remark || '-' }}</n-descriptions-item>
+              </n-descriptions>
+            </n-card>
+          </div>
 
           <n-card class="page-card order-detail-section-card" :bordered="false" title="附件">
             <n-space v-if="detailAttachments.length" :size="16" style="flex-wrap: wrap">
@@ -1317,27 +1536,6 @@ onMounted(loadOptions)
               :data="detail.repayments"
             />
             <n-empty v-else description="暂无还款记录" size="small" />
-          </n-card>
-
-          <n-card class="page-card order-detail-section-card" :bordered="false" title="商品明细">
-            <n-data-table
-              class="order-items-table"
-              size="small"
-              :pagination="false"
-              striped
-              :columns="[
-                { title: '商品名称', key: 'goodsName' },
-                {
-                  title: '品类',
-                  key: 'categoryName',
-                  render: (r) => r.categoryName || '-',
-                },
-                { title: '单价', key: 'sellingPrice', render: (r) => money(r.sellingPrice) },
-                { title: '数量', key: 'quantity' },
-                { title: '小计', key: 'subtotal', render: (r) => money(r.subtotal) },
-              ]"
-              :data="detail.items || []"
-            />
           </n-card>
         </template>
       </n-drawer-content>
@@ -1383,6 +1581,23 @@ onMounted(loadOptions)
   font-weight: 700;
   line-height: 1.2;
 }
+.order-export-snapshot {
+  background: #fff;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #e8ecf1;
+  margin-bottom: 16px;
+}
+.order-export-snapshot .order-debt-summary-row {
+  margin-bottom: 14px;
+}
+.order-export-snapshot :deep(.n-card.order-detail-section-card),
+.order-export-snapshot :deep(.n-card.order-detail-base-card) {
+  margin-bottom: 12px;
+}
+.order-export-snapshot :deep(.n-card:last-child) {
+  margin-bottom: 0;
+}
 .order-detail-descriptions :deep(.n-descriptions-table-wrapper) {
   border-radius: 6px;
   overflow: hidden;
@@ -1392,5 +1607,46 @@ onMounted(loadOptions)
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+}
+.order-list-image-capture {
+  position: fixed;
+  left: -14000px;
+  top: 0;
+  width: 1080px;
+  z-index: -5;
+  background: #fff;
+  padding: 16px 18px 20px;
+  font-size: 12px;
+  color: #1a1a1a;
+  box-sizing: border-box;
+}
+.order-list-image-capture__title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.order-list-image-capture__hint {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 10px;
+}
+.order-list-image-capture__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.order-list-image-capture__table th,
+.order-list-image-capture__table td {
+  border: 1px solid #cfd6df;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.order-list-image-capture__table th {
+  background: #eef2f6;
+  font-weight: 600;
+}
+.order-list-image-capture__empty {
+  color: #888;
+  padding: 12px 0;
 }
 </style>
