@@ -19,11 +19,8 @@ public class GoodsQueryDTO {
     @Schema(description = "每页条数", example = "10")
     private Integer pageSize = 10;
 
-    @Schema(description = "商品名称（模糊搜索）")
+    @Schema(description = "商品名称或首字母（模糊匹配名称或 name_initial）")
     private String name;
-
-    @Schema(description = "商品条码（精确搜索）")
-    private String barcode;
 
     @Schema(description = "分类ID")
     private Long categoryId;

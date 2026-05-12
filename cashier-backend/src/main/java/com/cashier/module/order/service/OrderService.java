@@ -1,7 +1,10 @@
 package com.cashier.module.order.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.cashier.module.order.dto.OrderAttachmentAddDTO;
 import com.cashier.module.order.dto.OrderQueryDTO;
+import com.cashier.module.order.dto.OrderRepaymentAddDTO;
+import com.cashier.module.order.dto.OrderUpdateDTO;
 import com.cashier.module.order.dto.SettleDTO;
 import com.cashier.module.order.vo.OrderDetailVO;
 import com.cashier.module.order.vo.OrderVO;
@@ -37,4 +40,29 @@ public interface OrderService {
      * 今日订单汇总
      */
     TodaySummaryVO todaySummary();
+
+    /**
+     * 编辑订单（结构化字段）
+     */
+    void updateOrder(OrderUpdateDTO dto);
+
+    /**
+     * 新增还款记录并累加实收金额（不超过订单总额）
+     */
+    void addRepayment(OrderRepaymentAddDTO dto);
+
+    /**
+     * 删除一笔还款记录（逻辑删除），并重算订单累计收款与支付状态
+     */
+    void removeRepayment(Long repaymentId);
+
+    /**
+     * 关联订单附件（如发票图片）
+     */
+    void addAttachment(OrderAttachmentAddDTO dto);
+
+    /**
+     * 删除订单附件（逻辑删除）
+     */
+    void removeAttachment(Long attachmentId);
 }

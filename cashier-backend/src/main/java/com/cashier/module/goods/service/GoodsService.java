@@ -16,11 +16,6 @@ public interface GoodsService extends IService<Goods> {
     IPage<GoodsVO> pageList(GoodsQueryDTO queryDTO);
 
     /**
-     * 根据条码查询商品
-     */
-    GoodsVO getByBarcode(String barcode);
-
-    /**
      * 新增商品
      */
     void addGoods(GoodsDTO dto);

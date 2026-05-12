@@ -1,16 +1,15 @@
 <script setup>
 /**
- * 示例：省市区 + 上传发票/凭证，结算时随 settle 提交。
- * 依赖：naive-ui；请将 postJson/uploadFile 换为你项目中的 request 封装。
+ * 示例：省市区 + 详细地址，拼进结算请求的 remark（与收银台上线约定一致）。
+ * 依赖：naive-ui；请将 postJson 换为你项目中的 request 封装。
  */
 import { ref, computed, onMounted } from 'vue'
-import { NFormItem, NCascader, NUpload, NImage, NSpace, useMessage } from 'naive-ui'
+import { NFormItem, NCascader, NSpace, useMessage } from 'naive-ui'
 
 const message = useMessage()
 const regionOptions = ref([])
 const regionValue = ref(null)
-const receiverAddress = ref('')
-const attachmentUrls = ref([])
+const receiverDetail = ref('')
 
 async function postJson(url, body) {
   const token = localStorage.getItem('token') || ''
@@ -38,33 +37,16 @@ async function loadRegions() {
 
 onMounted(loadRegions)
 
-/** 懒加载子节点（若整树已够用可不传 load） */
-const uploadAction = '/api/file/upload'
+/** 拼进 settle 的 remark（可与收银台其它分段用「；」拼接） */
+const settleRemarkSegment = computed(() => {
+  const codes = Array.isArray(regionValue.value) ? regionValue.value.join(',') : ''
+  const parts = []
+  if (codes) parts.push(`区域:${codes}`)
+  if (receiverDetail.value?.trim()) parts.push(`收货地址:${receiverDetail.value.trim()}`)
+  return parts.join('；')
+})
 
-function onUploadFinish({ event }) {
-  const xhr = event?.target
-  let body
-  try {
-    body = JSON.parse(xhr?.responseText || '{}')
-  } catch {
-    body = {}
-  }
-  if (body.code === 200 && body.data?.url) {
-    attachmentUrls.value = [...attachmentUrls.value, body.data.url]
-    message.success('上传成功')
-  } else {
-    message.error(body.message || '上传失败')
-  }
-}
-
-/** 供父组件调用：拼进 settle 请求体 */
-const settleExtras = computed(() => ({
-  receiverRegionCodes: Array.isArray(regionValue.value) ? regionValue.value.join(',') : '',
-  receiverAddress: receiverAddress.value,
-  attachmentUrls: [...attachmentUrls.value]
-}))
-
-defineExpose({ settleExtras, loadRegions })
+defineExpose({ settleRemarkSegment, loadRegions })
 </script>
 
 <template>
@@ -85,29 +67,7 @@ defineExpose({ settleExtras, loadRegions })
       />
     </n-form-item>
     <n-form-item label="详细地址">
-      <input v-model="receiverAddress" class="addr-input" type="text" placeholder="街道门牌等" />
-    </n-form-item>
-    <n-form-item label="发票/凭证">
-      <n-upload
-        :action="uploadAction"
-        :headers="{
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`
-        }"
-        list-type="image-card"
-        accept="image/*"
-        @finish="onUploadFinish"
-      />
-      <n-space :size="8" style="margin-top: 8px; flex-wrap: wrap">
-        <n-image
-          v-for="(u, i) in attachmentUrls"
-          :key="i"
-          width="72"
-          height="72"
-          object-fit="cover"
-          :src="u"
-          :preview-disabled="false"
-        />
-      </n-space>
+      <input v-model="receiverDetail" class="addr-input" type="text" placeholder="街道门牌等" />
     </n-form-item>
   </n-space>
 </template>

@@ -20,10 +20,6 @@ public class GoodsDTO {
     @Schema(description = "商品ID（编辑时必传）")
     private Long id;
 
-    @NotBlank(message = "商品条码不能为空")
-    @Schema(description = "商品条码", required = true)
-    private String barcode;
-
     @NotBlank(message = "商品名称不能为空")
     @Schema(description = "商品名称", required = true)
     private String name;

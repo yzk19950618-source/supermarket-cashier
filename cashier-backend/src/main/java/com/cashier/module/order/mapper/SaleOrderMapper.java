@@ -25,5 +25,6 @@ public interface SaleOrderMapper extends BaseMapper<SaleOrder> {
                                 @Param("payType") Integer payType,
                                 @Param("status") Integer status,
                                 @Param("startDate") String startDate,
-                                @Param("endDate") String endDate);
+                                @Param("endDate") String endDate,
+                                @Param("memberId") Long memberId);
 }

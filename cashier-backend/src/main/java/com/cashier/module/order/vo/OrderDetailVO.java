@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -17,6 +18,15 @@ public class OrderDetailVO extends OrderVO {
 
     @Schema(description = "订单明细列表")
     private List<OrderItemVO> items;
+
+    @Schema(description = "还款记录（时间倒序）")
+    private List<OrderRepaymentVO> repayments = new ArrayList<>();
+
+    @Schema(description = "订单附件（发票、欠条、送货图片等）")
+    private List<OrderAttachmentVO> attachments = new ArrayList<>();
+
+    @Schema(description = "发票类附件 URL（仅 type=1；兼容旧客户端）")
+    private List<String> invoiceUrls = new ArrayList<>();
 
     /**
      * 订单明细项
@@ -37,6 +47,9 @@ public class OrderDetailVO extends OrderVO {
         @Schema(description = "商品条码")
         private String barcode;
 
+        @Schema(description = "品类名称")
+        private String categoryName;
+
         @Schema(description = "销售单价")
         private BigDecimal sellingPrice;
 
@@ -45,5 +58,22 @@ public class OrderDetailVO extends OrderVO {
 
         @Schema(description = "小计金额")
         private BigDecimal subtotal;
+    }
+
+    /**
+     * 订单附件项
+     */
+    @Data
+    @Schema(description = "订单附件")
+    public static class OrderAttachmentVO {
+
+        @Schema(description = "附件记录 ID")
+        private Long id;
+
+        @Schema(description = "类型：1-发票 2-欠条 3-送货图片")
+        private Integer attachmentType;
+
+        @Schema(description = "图片 URL")
+        private String url;
     }
 }

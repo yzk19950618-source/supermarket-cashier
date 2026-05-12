@@ -19,11 +19,14 @@ public class Goods {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 商品条码 */
+    /** 商品条码（与离线库 goods.barcode、uk_barcode 一致） */
     private String barcode;
 
     /** 商品名称 */
     private String name;
+
+    /** 名称首字母（离线库 name_initial） */
+    private String nameInitial;
 
     /** 分类ID */
     private Long categoryId;

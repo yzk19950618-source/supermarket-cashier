@@ -4,8 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cashier.common.constant.CommonConstant;
 import com.cashier.module.order.entity.SaleOrder;
 import com.cashier.module.order.entity.SaleOrderItem;
+import com.cashier.module.order.entity.SaleOrderRepayment;
 import com.cashier.module.order.mapper.SaleOrderItemMapper;
 import com.cashier.module.order.mapper.SaleOrderMapper;
+import com.cashier.module.order.mapper.SaleOrderRepaymentMapper;
 import com.cashier.module.user.entity.User;
 import com.cashier.module.user.mapper.UserMapper;
 import com.cashier.module.goods.entity.GoodsCategory;
@@ -38,6 +40,7 @@ import java.util.stream.Collectors;
 public class StatisticsServiceImpl implements StatisticsService {
 
     private final SaleOrderMapper saleOrderMapper;
+    private final SaleOrderRepaymentMapper saleOrderRepaymentMapper;
     private final SaleOrderItemMapper saleOrderItemMapper;
     private final UserMapper userMapper;
     private final GoodsCategoryMapper categoryMapper;
@@ -51,44 +54,108 @@ public class StatisticsServiceImpl implements StatisticsService {
         LocalDateTime todayStart = LocalDateTime.of(today, LocalTime.MIN);
         LocalDateTime todayEnd = LocalDateTime.of(today, LocalTime.MAX);
 
-        // 今日已完成订单
+        List<SaleOrderRepayment> allRepayments = saleOrderRepaymentMapper.selectList(
+                new LambdaQueryWrapper<SaleOrderRepayment>().eq(SaleOrderRepayment::getDeleted, 0));
+        Set<Long> orderIdsWithRepayment = allRepayments.stream()
+                .map(SaleOrderRepayment::getOrderId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // ----- 今日：按订单创建日 -----
         List<SaleOrder> todayOrders = saleOrderMapper.selectList(
                 new LambdaQueryWrapper<SaleOrder>()
                         .between(SaleOrder::getCreateTime, todayStart, todayEnd)
-                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_COMPLETED)
                         .eq(SaleOrder::getDeleted, 0));
+        vo.setTodayOrderCount(todayOrders.size());
 
-        // 今日销售额
-        BigDecimal todaySales = todayOrders.stream()
-                .map(SaleOrder::getRealAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        vo.setTodaySales(todaySales);
+        BigDecimal todayTurnover = todayOrders.stream()
+                .filter(this::isOrderNotRefunded)
+                .map(SaleOrder::getTotalAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        vo.setTodayTotalTurnover(todayTurnover);
 
-        // 今日订单数
-        vo.setTodayOrders(todayOrders.size());
+        BigDecimal todayPending = todayOrders.stream()
+                .filter(this::isOrderNotRefunded)
+                .map(this::orderRemainDebt)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        vo.setTodayPendingCollection(todayPending);
 
-        // 今日客单价
-        if (!todayOrders.isEmpty()) {
-            vo.setTodayAvgPrice(todaySales.divide(
-                    BigDecimal.valueOf(todayOrders.size()), 2, RoundingMode.HALF_UP));
-        } else {
-            vo.setTodayAvgPrice(BigDecimal.ZERO);
-        }
+        // ----- 本年（自然年）：按订单创建时间 -----
+        LocalDate y0 = LocalDate.of(today.getYear(), 1, 1);
+        LocalDate y1 = LocalDate.of(today.getYear(), 12, 31);
+        LocalDateTime yearStart = LocalDateTime.of(y0, LocalTime.MIN);
+        LocalDateTime yearEnd = LocalDateTime.of(y1, LocalTime.MAX);
 
-        // 本月销售额
-        LocalDateTime monthStart = LocalDateTime.of(today.withDayOfMonth(1), LocalTime.MIN);
-        List<SaleOrder> monthOrders = saleOrderMapper.selectList(
+        List<SaleOrder> yearOrders = saleOrderMapper.selectList(
                 new LambdaQueryWrapper<SaleOrder>()
-                        .ge(SaleOrder::getCreateTime, monthStart)
-                        .le(SaleOrder::getCreateTime, todayEnd)
-                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_COMPLETED)
+                        .between(SaleOrder::getCreateTime, yearStart, yearEnd)
                         .eq(SaleOrder::getDeleted, 0));
-        BigDecimal monthSales = monthOrders.stream()
+        vo.setYearOrderCount(yearOrders.size());
+
+        BigDecimal yearTotalAmount = yearOrders.stream()
+                .filter(this::isOrderNotRefunded)
+                .map(SaleOrder::getTotalAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        vo.setYearTotalAmount(yearTotalAmount);
+
+        BigDecimal yearUncollected = yearOrders.stream()
+                .filter(this::isOrderNotRefunded)
+                .map(this::orderRemainDebt)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        vo.setYearTotalUncollectedAmount(yearUncollected);
+
+        BigDecimal repayYear = allRepayments.stream()
+                .filter(r -> r.getCreateTime() != null
+                        && !r.getCreateTime().isBefore(yearStart)
+                        && !r.getCreateTime().isAfter(yearEnd))
+                .map(SaleOrderRepayment::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal orphanYear = yearOrders.stream()
+                .filter(o -> o.getStatus() != null && o.getStatus() == CommonConstant.ORDER_STATUS_PAID)
+                .filter(o -> !orderIdsWithRepayment.contains(o.getId()))
                 .map(SaleOrder::getRealAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        vo.setMonthSales(monthSales);
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        vo.setYearTotalCollectedAmount(repayYear.add(orphanYear).setScale(2, RoundingMode.HALF_UP));
 
         return vo;
+    }
+
+    private boolean isOrderNotRefunded(SaleOrder o) {
+        return o.getStatus() == null || o.getStatus() != CommonConstant.ORDER_STATUS_REFUNDED;
+    }
+
+    /** 剩余欠款 = max(0, 应收(优惠后) − 已收)；已收取库表 real_amount（与还款汇总对齐场景下一致） */
+    private BigDecimal orderRemainDebt(SaleOrder o) {
+        BigDecimal receivable = payableDue(o.getTotalAmount(), o.getDiscountAmount());
+        BigDecimal paid = o.getRealAmount() != null ? o.getRealAmount() : BigDecimal.ZERO;
+        paid = paid.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal remain = receivable.subtract(paid).setScale(2, RoundingMode.HALF_UP);
+        if (remain.compareTo(BigDecimal.ZERO) < 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return remain;
+    }
+
+    private static BigDecimal payableDue(BigDecimal totalAmount, BigDecimal discountAmount) {
+        BigDecimal total = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+        BigDecimal disc = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+        BigDecimal due = total.subtract(disc);
+        if (due.compareTo(BigDecimal.ZERO) < 0) {
+            due = BigDecimal.ZERO;
+        }
+        return due.setScale(2, RoundingMode.HALF_UP);
     }
 
     @Override
@@ -110,7 +177,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             List<SaleOrder> dayOrders = saleOrderMapper.selectList(
                     new LambdaQueryWrapper<SaleOrder>()
                             .between(SaleOrder::getCreateTime, dayStart, dayEnd)
-                            .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_COMPLETED)
+                            .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_PAID)
                             .eq(SaleOrder::getDeleted, 0));
 
             BigDecimal daySales = dayOrders.stream()
@@ -134,7 +201,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<SaleOrder> orders = saleOrderMapper.selectList(
                 new LambdaQueryWrapper<SaleOrder>()
                         .ge(SaleOrder::getCreateTime, startDate)
-                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_COMPLETED)
+                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_PAID)
                         .eq(SaleOrder::getDeleted, 0)
                         .select(SaleOrder::getId));
 
@@ -178,7 +245,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<SaleOrder> orders = saleOrderMapper.selectList(
                 new LambdaQueryWrapper<SaleOrder>()
                         .ge(SaleOrder::getCreateTime, startDate)
-                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_COMPLETED)
+                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_PAID)
                         .eq(SaleOrder::getDeleted, 0)
                         .select(SaleOrder::getId));
 
@@ -231,7 +298,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<SaleOrder> orders = saleOrderMapper.selectList(
                 new LambdaQueryWrapper<SaleOrder>()
                         .ge(SaleOrder::getCreateTime, startDate)
-                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_COMPLETED)
+                        .eq(SaleOrder::getStatus, CommonConstant.ORDER_STATUS_PAID)
                         .eq(SaleOrder::getDeleted, 0));
 
         if (orders.isEmpty()) {

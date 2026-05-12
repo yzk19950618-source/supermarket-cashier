@@ -4,9 +4,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Data
 @Schema(description = "订单信息")
@@ -36,8 +35,17 @@ public class OrderVO {
     @Schema(description = "优惠金额")
     private BigDecimal discountAmount;
 
-    @Schema(description = "实付金额")
+    @Schema(description = "累计实收（已还金额），对应库字段 real_amount；分批还款累加至此")
     private BigDecimal realAmount;
+
+    @Schema(description = "应收合计（优惠后）= totalAmount − discountAmount；与分批还款上限一致")
+    private BigDecimal receivableAmount;
+
+    @Schema(description = "累计已还（与 realAmount 同义，便于老前端只认 paid 语义时读取）")
+    private BigDecimal paidAmount;
+
+    @Schema(description = "剩余欠款 = receivableAmount − paidAmount；老前端请勿再用 totalAmount−realAmount 计算（有优惠时与真实欠款不一致）")
+    private BigDecimal remainDebt;
 
     @Schema(description = "支付方式")
     private Integer payType;
@@ -48,14 +56,29 @@ public class OrderVO {
     @Schema(description = "备注")
     private String remark;
 
-    @Schema(description = "收货详细地址")
-    private String receiverAddress;
+    @Schema(description = "客户姓名")
+    private String customerName;
 
-    @Schema(description = "省市区编码，逗号分隔")
-    private String receiverRegionCodes;
+    @Schema(description = "客户电话")
+    private String customerPhone;
 
-    @Schema(description = "附件图片 URL 列表")
-    private List<String> attachmentUrls = new ArrayList<>();
+    @Schema(description = "还款日期")
+    private LocalDate repayDate;
+
+    @Schema(description = "送货日期")
+    private LocalDate deliveryDate;
+
+    @Schema(description = "客户地址")
+    private String customerAddress;
+
+    @Schema(description = "客户性别")
+    private Integer customerGender;
+
+    @Schema(description = "订单日期")
+    private LocalDate orderDate;
+
+    @Schema(description = "核销时间")
+    private LocalDateTime paidTime;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

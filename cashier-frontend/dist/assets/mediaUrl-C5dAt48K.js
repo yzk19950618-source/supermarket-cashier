@@ -1,0 +1,1 @@
+const r=typeof window<"u"?window.location.origin:"";function i(t){if(t==null||t==="")return"";const n=String(t);return/^https?:\/\//i.test(n)?n:n.startsWith("/")?`${r}${n}`:`${r}/${n}`}export{i as r};

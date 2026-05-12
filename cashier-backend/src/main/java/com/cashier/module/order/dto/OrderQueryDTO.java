@@ -27,4 +27,7 @@ public class OrderQueryDTO {
 
     @Schema(description = "结束日期（yyyy-MM-dd）")
     private String endDate;
+
+    @Schema(description = "会员/客户ID（筛选该客户全部订单）")
+    private Long memberId;
 }

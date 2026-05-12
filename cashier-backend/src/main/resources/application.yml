@@ -5,6 +5,10 @@ server:
 spring:
   profiles:
     active: dev
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=20000,expireAfterWrite=24h
   application:
     name: cashier-backend
   servlet:

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -28,6 +29,12 @@ public class SaleOrder {
     /** 收银员ID */
     private Long userId;
 
+    /** 客户地址（库 customer_address） */
+    private String customerAddress;
+
+    /** 客户性别（库 customer_gender） */
+    private Integer customerGender;
+
     /** 订单总金额 */
     private BigDecimal totalAmount;
 
@@ -46,14 +53,23 @@ public class SaleOrder {
     /** 备注 */
     private String remark;
 
-    /** 收货详细地址（展示文案） */
-    private String receiverAddress;
+    /** 客户姓名（库表 customer_name；会员单取会员名，散客取备注「客户:」段） */
+    private String customerName;
 
-    /** 省市区编码，逗号分隔 */
-    private String receiverRegionCodes;
+    /** 客户电话（库表 customer_phone） */
+    private String customerPhone;
 
-    /** 附件图片 URL 列表（JSON 数组字符串） */
-    private String attachmentUrls;
+    /** 还款日期（库表 repay_date） */
+    private LocalDate repayDate;
+
+    /** 送货日期（库表 delivery_date） */
+    private LocalDate deliveryDate;
+
+    /** 订单业务日期（库 order_date） */
+    private LocalDate orderDate;
+
+    /** 核销/支付时间（库 paid_time） */
+    private LocalDateTime paidTime;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

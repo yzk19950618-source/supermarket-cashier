@@ -11,6 +11,7 @@
             g.id,
             g.barcode,
             g.name,
+            g.name_initial AS nameInitial,
             g.category_id AS categoryId,
             gc.name AS categoryName,
             g.unit,
@@ -25,10 +26,10 @@
         LEFT JOIN goods_category gc ON g.category_id = gc.id AND gc.deleted = 0
         WHERE g.deleted = 0
         <if test="name != null and name != ''">
-            AND g.name LIKE CONCAT('%', #{name}, '%')
-        </if>
-        <if test="barcode != null and barcode != ''">
-            AND g.barcode = #{barcode}
+            AND (
+                g.name LIKE CONCAT('%', #{name}, '%')
+                OR IFNULL(g.name_initial, '') LIKE CONCAT('%', #{name}, '%')
+            )
         </if>
         <if test="categoryId != null">
             AND g.category_id = #{categoryId}

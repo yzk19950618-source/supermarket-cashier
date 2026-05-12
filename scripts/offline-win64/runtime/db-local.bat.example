@@ -1,0 +1,15 @@
+@echo off
+rem Copy this file to db-local.bat (same folder as start.bat). start.bat will call it before launching Java.
+rem Spring Boot reads DB_URL, DB_USERNAME, DB_PASSWORD from the environment.
+
+rem --- Default in jar: root/root @ 127.0.0.1:3306/cashier_db (after init-db.bat) ---
+
+rem --- Use init-db created app user instead (uncomment the three lines below) ---
+rem set "DB_URL=jdbc:mysql://127.0.0.1:3306/cashier_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+rem set "DB_USERNAME=cashier"
+rem set "DB_PASSWORD=cashier123"
+
+rem --- Example: different port or remote MySQL ---
+rem set "DB_URL=jdbc:mysql://127.0.0.1:3307/cashier_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+
+exit /b 0

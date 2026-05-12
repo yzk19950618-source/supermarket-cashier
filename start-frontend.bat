@@ -11,12 +11,7 @@ if not exist "%FE%\package.json" (
     exit /b 1
 )
 
-if not exist "%FE%\dist\index.html" (
-    echo [ERROR] Missing: "%FE%\dist\index.html"
-    echo [INFO] Build the SPA into dist first, or open http://localhost:8080 via start-backend.bat
-    pause
-    exit /b 1
-)
+REM Dev server serves cashier-frontend/src (no dist required). Run "npm run build" when you need dist for Spring/static deploy.
 
 where npm >nul 2>&1
 if errorlevel 1 (
@@ -36,7 +31,8 @@ if not exist node_modules\ (
     )
 )
 
-echo [INFO] Vite preview: http://localhost:5173  (proxies /api to http://localhost:8080)
+echo [INFO] Vite dev ^(源码 cashier-frontend/src^): http://localhost:5173
+echo [INFO] Proxies /api and /uploads to http://localhost:8080
 echo [INFO] Start backend first: start-backend.bat
 start "Cashier-Frontend" /D "%FE%" cmd /k call npm run dev
 

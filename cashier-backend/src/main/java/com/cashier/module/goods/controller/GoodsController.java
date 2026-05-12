@@ -3,7 +3,9 @@ package com.cashier.module.goods.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.cashier.common.dto.IdDTO;
 import com.cashier.common.result.R;
-import com.cashier.module.goods.dto.*;
+import com.cashier.module.goods.dto.GoodsDTO;
+import com.cashier.module.goods.dto.GoodsQueryDTO;
+import com.cashier.module.goods.dto.GoodsStatusDTO;
 import com.cashier.module.goods.service.GoodsService;
 import com.cashier.module.goods.vo.GoodsVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,12 +35,6 @@ public class GoodsController {
     @PostMapping("/page")
     public R<IPage<GoodsVO>> page(@RequestBody GoodsQueryDTO queryDTO) {
         return R.ok(goodsService.pageList(queryDTO));
-    }
-
-    @Operation(summary = "根据条码查询商品")
-    @PostMapping("/getByBarcode")
-    public R<GoodsVO> getByBarcode(@RequestBody @Valid BarcodeDTO dto) {
-        return R.ok(goodsService.getByBarcode(dto.getBarcode()));
     }
 
     @Operation(summary = "新增商品")

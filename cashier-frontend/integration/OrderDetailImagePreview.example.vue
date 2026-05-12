@@ -1,7 +1,7 @@
 <script setup>
 /**
  * 示例：订单详情附件大图预览（Naive n-image-group）。
- * props.urls：相对路径 /uploads/... 或绝对 URL 均可（与后端返回 attachmentUrls 一致）。
+ * props.urls：相对路径 /uploads/... 或绝对 URL 均可。
  */
 import { computed } from 'vue'
 import { NSpace, NImage, NText } from 'naive-ui'

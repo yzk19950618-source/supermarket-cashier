@@ -1,0 +1,31 @@
+# 离线单机包（scripts/runtime/start.bat 使用 --spring.profiles.active=offline）
+# 默认 root/root @ 127.0.0.1:3306/cashier_db（与 init-db.bat 设置的 root 密码、本机常见开发库一致）
+# 若要用 init-db 创建的应用账号：复制 scripts/runtime/db-local.bat.example 为 db-local.bat 并取消注释 cashier 段，或设环境变量 DB_USERNAME / DB_PASSWORD
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/cashier_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    druid:
+      initial-size: 5
+      min-idle: 5
+      max-active: 20
+      max-wait: 60000
+      time-between-eviction-runs-millis: 60000
+      min-evictable-idle-time-millis: 300000
+      validation-query: SELECT 1
+      test-while-idle: true
+      test-on-borrow: false
+      test-on-return: false
+      pool-prepared-statements: true
+      max-pool-prepared-statement-per-connection-size: 20
+  config:
+    import:
+      - optional:file:./application-local.yml
+      - optional:file:../application-local.yml
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl

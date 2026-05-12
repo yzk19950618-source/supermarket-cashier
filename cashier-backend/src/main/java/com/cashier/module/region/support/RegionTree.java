@@ -1,6 +1,7 @@
 package com.cashier.module.region.support;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -8,7 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 内置省市区树与懒加载子节点索引（示例数据）。
+ * 内置省市区镇村树与懒加载子节点索引（示例数据，与前端地址管理/收银台同源）。
+ * 省→市→区县→镇/街道→村/社区 均可通过 {@link #childrenOf(String)} 按父级编码懒加载。
  */
 public final class RegionTree {
 
@@ -64,14 +66,31 @@ public final class RegionTree {
     }
 
     private static Map<String, Object> province(String code, String name, Map<String, Object>... children) {
-        return node(code, name, List.of(children));
+        return node(code, name, Arrays.asList(children));
     }
 
     private static Map<String, Object> city(String code, String name, Map<String, Object>... children) {
-        return node(code, name, List.of(children));
+        return node(code, name, Arrays.asList(children));
     }
 
+    /**
+     * 区县下挂镇/街道，其下再挂村/社区（编码在区县码后拼接，保证全局唯一）。
+     */
     private static Map<String, Object> district(String code, String name) {
+        List<Map<String, Object>> towns = new ArrayList<>();
+        towns.add(town(code + "801", "城关街道",
+                village(code + "801001", "第一社区"),
+                village(code + "801002", "第二社区")));
+        towns.add(town(code + "802", "示范乡",
+                village(code + "802001", "甲村")));
+        return node(code, name, towns);
+    }
+
+    private static Map<String, Object> town(String code, String name, Map<String, Object>... villages) {
+        return node(code, name, Arrays.asList(villages));
+    }
+
+    private static Map<String, Object> village(String code, String name) {
         return node(code, name, null);
     }
 

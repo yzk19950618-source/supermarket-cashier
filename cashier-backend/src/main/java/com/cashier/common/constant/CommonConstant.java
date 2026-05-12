@@ -49,12 +49,26 @@ public class CommonConstant {
     public static final int PAY_TYPE_BANK = 4;
 
     /**
-     * 订单状态：已退款
+     * 订单状态：已退款（与离线库 init.sql 注释一致）
      */
     public static final int ORDER_STATUS_REFUNDED = 0;
 
     /**
-     * 订单状态：已完成
+     * 订单状态：已支付（离线库文案「已支付」） / 业务侧等价「已完成」
      */
-    public static final int ORDER_STATUS_COMPLETED = 1;
+    public static final int ORDER_STATUS_PAID = 1;
+
+    /** @deprecated 请优先使用 {@link #ORDER_STATUS_PAID} */
+    @Deprecated
+    public static final int ORDER_STATUS_COMPLETED = ORDER_STATUS_PAID;
+
+    /**
+     * 订单状态：未支付（离线库 sale_order.status 默认值）
+     */
+    public static final int ORDER_STATUS_UNPAID = 2;
+
+    /**
+     * 会员备注（member.remark）最大字符数；与 init.sql / incremental/003 一致
+     */
+    public static final int MEMBER_REMARK_MAX_LENGTH = 2000;
 }

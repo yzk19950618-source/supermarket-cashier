@@ -33,6 +33,9 @@ public class SaleOrderItem {
     /** 商品条码（冗余） */
     private String barcode;
 
+    /** 商品品类名称（冗余，库 category_name） */
+    private String categoryName;
+
     /** 销售单价 */
     private BigDecimal sellingPrice;
 

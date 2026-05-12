@@ -25,6 +25,9 @@ public class GoodsVO {
     @Schema(description = "商品名称")
     private String name;
 
+    @Schema(description = "名称首字母（拼音简写等，用于首字母搜索）")
+    private String nameInitial;
+
     @Schema(description = "分类ID")
     private Long categoryId;
 

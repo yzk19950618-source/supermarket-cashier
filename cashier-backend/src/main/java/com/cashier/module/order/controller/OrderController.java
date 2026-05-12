@@ -4,7 +4,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.cashier.common.dto.IdDTO;
 import com.cashier.common.result.R;
+import com.cashier.module.order.dto.OrderAttachmentAddDTO;
 import com.cashier.module.order.dto.OrderQueryDTO;
+import com.cashier.module.order.dto.OrderRepaymentAddDTO;
+import com.cashier.module.order.dto.OrderUpdateDTO;
 import com.cashier.module.order.dto.SettleDTO;
 import com.cashier.module.order.service.OrderService;
 import com.cashier.module.order.vo.OrderDetailVO;
@@ -67,5 +70,40 @@ public class OrderController {
     @PostMapping("/today")
     public R<TodaySummaryVO> today() {
         return R.ok(orderService.todaySummary());
+    }
+
+    @Operation(summary = "编辑订单（结构化 JSON），路径与离线/生产约定一致")
+    @PostMapping("/edit")
+    public R<Void> edit(@RequestBody @Valid OrderUpdateDTO dto) {
+        orderService.updateOrder(dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "新增还款记录")
+    @PostMapping("/repayment/add")
+    public R<Void> addRepayment(@RequestBody @Valid OrderRepaymentAddDTO dto) {
+        orderService.addRepayment(dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "删除还款记录（离线约定路径）")
+    @PostMapping("/repayment/delete")
+    public R<Void> deleteRepayment(@RequestBody @Valid IdDTO dto) {
+        orderService.removeRepayment(dto.getId());
+        return R.ok();
+    }
+
+    @Operation(summary = "关联订单附件（发票图片 URL）")
+    @PostMapping("/attachment/add")
+    public R<Void> addAttachment(@RequestBody @Valid OrderAttachmentAddDTO dto) {
+        orderService.addAttachment(dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "删除订单附件（离线约定路径）")
+    @PostMapping("/attachment/delete")
+    public R<Void> deleteAttachment(@RequestBody @Valid IdDTO dto) {
+        orderService.removeAttachment(dto.getId());
+        return R.ok();
     }
 }

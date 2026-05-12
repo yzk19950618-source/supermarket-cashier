@@ -19,17 +19,20 @@ public class Member {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 会员卡号 */
-    private String cardNo;
-
     /** 会员姓名 */
     private String name;
 
-    /** 手机号 */
+    /** 手机号（离线库唯一键 uk_phone） */
     private String phone;
 
     /** 性别 */
     private Integer gender;
+
+    /** 地址 */
+    private String address;
+
+    /** 备注 */
+    private String remark;
 
     /** 余额 */
     private BigDecimal balance;

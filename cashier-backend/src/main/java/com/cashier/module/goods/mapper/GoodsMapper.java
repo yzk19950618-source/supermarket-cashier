@@ -23,14 +23,12 @@ public interface GoodsMapper extends BaseMapper<Goods> {
      *
      * @param page       分页参数
      * @param name       商品名称
-     * @param barcode    商品条码
      * @param categoryId 分类ID
      * @param status     状态
      * @return 分页结果
      */
     IPage<GoodsVO> selectPageVO(Page<GoodsVO> page,
                                 @Param("name") String name,
-                                @Param("barcode") String barcode,
                                 @Param("categoryId") Long categoryId,
                                 @Param("status") Integer status);
 

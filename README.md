@@ -189,13 +189,12 @@ npm run build
 
 启动后端服务后，访问 Knife4j 接口文档：http://localhost:8080/doc.html
 
-## 订单地址、附件图片（后端）
+## 订单备注、上传与区域（后端）
 
-- **已有数据库**：请执行增量脚本 [`cashier-backend/src/main/resources/db/migration-order-attachments.sql`](cashier-backend/src/main/resources/db/migration-order-attachments.sql)，为 `sale_order` 增加 `receiver_address`、`receiver_region_codes`、`attachment_urls`。
 - **上传**：`POST /api/file/upload`（`multipart/form-data`，字段名 `file`），返回体 `data.url` 为形如 `/uploads/yyyyMM/uuid.jpg` 的路径；浏览器 `<img src="/uploads/...">` 已放行鉴权（仅读文件，生产环境请评估风险）。
-- **结算**：`POST /api/order/settle` 请求体可带 `receiverAddress`、`receiverRegionCodes`、`attachmentUrls`（字符串 URL 数组）。
+- **结算**：`POST /api/order/settle` 请求体为 `memberCardNo`、`payType`、`items`、`remark`；收货地址与省市区编码写入 `remark` 分段（与收银台前端一致）。
 - **省市区**：`GET`/`POST /api/region/all` 返回整树；`GET`/`POST /api/region/children?parentId=` 支持懒加载（`parentId` 为空为省级根）。
-- **Vue 接入示例**（省市区、上传缩略图 + 大图预览、订单详情多图）：见 [`cashier-frontend/integration/README.md`](cashier-frontend/integration/README.md)。
+- **Vue 接入示例**（省市区与备注拼接）：见 [`cashier-frontend/integration/README.md`](cashier-frontend/integration/README.md)。
 
 ## 说明
 

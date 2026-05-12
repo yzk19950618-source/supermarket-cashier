@@ -21,4 +21,7 @@ public class MemberQueryDTO {
 
     @Schema(description = "会员卡号")
     private String cardNo;
+
+    @Schema(description = "地址（模糊）")
+    private String address;
 }

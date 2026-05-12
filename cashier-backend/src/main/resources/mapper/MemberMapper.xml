@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cashier.module.member.mapper.MemberMapper">
+
+    <!-- 与各单 remainDebt / fillDebtSummary 一致：应收(总额−折扣) − 已收(real_amount)，已退款不累加 -->
+    <select id="selectDebtTotalsByMemberIds" resultType="com.cashier.module.member.dto.MemberDebtRow">
+        SELECT
+            o.member_id AS memberId,
+            ROUND(IFNULL(SUM(
+                CASE WHEN o.status = 0 THEN 0
+                ELSE GREATEST(0, (IFNULL(o.total_amount, 0) - IFNULL(o.discount_amount, 0)) - IFNULL(o.real_amount, 0))
+                END
+            ), 0), 2) AS totalDebt
+        FROM sale_order o
+        WHERE o.deleted = 0
+          AND o.member_id IS NOT NULL
+          AND o.member_id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        GROUP BY o.member_id
+    </select>
+
+</mapper>

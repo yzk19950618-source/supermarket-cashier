@@ -21,12 +21,8 @@ if exist "%ROOT%cashier-frontend\package.json" (
         pause
         exit /b 1
     )
-    if not exist "%ROOT%cashier-frontend\dist\index.html" (
-        echo [WARN] Missing dist\index.html - skipped frontend. Use http://localhost:8080 when backend embeds static.
-    ) else (
-        echo [INFO] Starting frontend in a new window (Vite preview :5173, /api -^> :8080)
-        start "Cashier-Frontend" /D "%ROOT%cashier-frontend" cmd /k "if not exist node_modules\ (call npm install) & call npm run dev"
-    )
+    echo [INFO] Starting frontend dev (source: cashier-frontend\src, http://localhost:5173 , /api -^> :8080)
+    start "Cashier-Frontend" /D "%ROOT%cashier-frontend" cmd /k "if not exist node_modules\ (call npm install) & call npm run dev"
 ) else (
     echo [INFO] No cashier-frontend\package.json - skipped separate frontend.
     echo [INFO] With dist embedded by backend, open http://localhost:8080
